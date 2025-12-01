@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page } from "@playwright/test";
 
 export interface HealingResult {
   success: boolean;
@@ -14,11 +14,10 @@ export interface HealingResult {
 export interface StabilifyOptions {
   apiKey?: string;
   maxRetries?: number;
-  logLevel?: 'info' | 'warn' | 'debug';
+  logLevel?: "info" | "warn" | "debug";
 }
 
 export interface ExtendedPage extends Page {
-  clickStable(selector: string): Promise<void>;
-  fillStable(selector: string, value: string): Promise<void>;
+  getByTextStable: Page["getByText"];
+  getByRoleStable: Page["getByRole"];
 }
-

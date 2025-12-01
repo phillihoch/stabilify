@@ -1,15 +1,18 @@
-import { test } from '@playwright/test';
-import { extendPage } from '../src';
+import { expect, test } from "@playwright/test";
+import { extendPage } from "../src";
 
-test('basic healing example', async ({ page }) => {
+test("getByTextStable example", async ({ page }) => {
   // Erweitere die Page mit Stabilify
   extendPage(page);
 
   // Navigiere zu einer Test-Seite
-  await page.goto('https://example.com');
+  await page.goto("https://example.com");
 
-  // Verwende stable Methoden - diese heilen automatisch bei Fehlern
-  await page.clickStable('button.submit');
-  await page.fillStable('#email', 'test@example.com');
+  // Verwende getByTextStable - findet ähnlichen Text automatisch
+  const heading = page.getByTextStable("Example Domain");
+  await expect(heading).toBeVisible();
+
+  // Funktioniert auch wenn der Text leicht anders ist
+  const moreInfo = page.getByTextStable("More information");
+  await expect(moreInfo).toBeVisible();
 });
-
