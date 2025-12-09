@@ -17,6 +17,7 @@ import type {
 } from "@playwright/test/reporter";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { sanitizeText, sanitizeTextArray } from "./utils/text-sanitizer";
 
 /**
  * Konfigurationsoptionen für den Self-Healing Reporter
@@ -199,6 +200,8 @@ class SelfHealingReporter implements Reporter {
 
   /**
    * Sammelt alle relevanten Informationen eines fehlgeschlagenen Tests.
+   * Alle Textfelder werden automatisch von ANSI-Codes und anderen nicht-informativen
+   * Zeichen bereinigt, um die Daten KI-freundlicher zu machen.
    *
    * @param test - Der fehlgeschlagene Testfall
    * @param result - Das Testergebnis mit Fehlerdetails
@@ -211,22 +214,22 @@ class SelfHealingReporter implements Reporter {
       location: { line: test.location.line, column: test.location.column },
       projectName: test.titlePath()[1] || "default",
       errors: result.errors.map((e) => ({
-        message: e.message || "Unknown error",
-        stack: e.stack,
-        snippet: e.snippet,
+        message: sanitizeText(e.message || "Unknown error"),
+        stack: sanitizeText(e.stack),
+        snippet: sanitizeText(e.snippet),
         location: e.location,
       })),
       steps: result.steps.map((s) => ({
-        title: s.title,
+        title: sanitizeText(s.title),
         duration: s.duration,
         category: s.category,
-        error: s.error?.message,
+        error: sanitizeText(s.error?.message),
       })),
       screenshots: [],
       traces: [],
       videos: [],
-      stdout: result.stdout.map(String),
-      stderr: result.stderr.map(String),
+      stdout: sanitizeTextArray(result.stdout.map(String)),
+      stderr: sanitizeTextArray(result.stderr.map(String)),
       duration: result.duration,
       retry: result.retry,
       status: result.status,

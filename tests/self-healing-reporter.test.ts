@@ -452,4 +452,136 @@ describe("SelfHealingReporter", () => {
       expect(content.failures).toHaveLength(1);
     });
   });
+
+  describe("Text Sanitization", () => {
+    it("sollte ANSI-Codes aus Fehlermeldungen entfernen", () => {
+      const testReporter = new SelfHealingReporter();
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      const testCase = createMockTestCase();
+      const testResult = createMockTestResult("failed", {
+        errors: [
+          {
+            message: "\u001b[31mError:\u001b[0m Expected element to be visible",
+            stack: "\u001b[90mStack trace\u001b[0m",
+            snippet: "\u001b[1mawait expect(page).toBeVisible();\u001b[0m",
+          },
+        ],
+      });
+
+      testReporter.onTestEnd(testCase, testResult);
+      const failures = testReporter.getFailures();
+
+      expect(failures).toHaveLength(1);
+      expect(failures[0].errors[0].message).toBe(
+        "Error: Expected element to be visible"
+      );
+      expect(failures[0].errors[0].stack).toBe("Stack trace");
+      expect(failures[0].errors[0].snippet).toBe(
+        "await expect(page).toBeVisible();"
+      );
+    });
+
+    it("sollte ANSI-Codes aus stdout/stderr entfernen", () => {
+      const testReporter = new SelfHealingReporter();
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      const testCase = createMockTestCase();
+      const testResult = createMockTestResult("failed", {
+        stdout: ["\u001b[32mSuccess message\u001b[0m"],
+        stderr: ["\u001b[31mError message\u001b[0m"],
+      });
+
+      testReporter.onTestEnd(testCase, testResult);
+      const failures = testReporter.getFailures();
+
+      expect(failures).toHaveLength(1);
+      expect(failures[0].stdout).toEqual(["Success message"]);
+      expect(failures[0].stderr).toEqual(["Error message"]);
+    });
+
+    it("sollte Tabs in Spaces umwandeln", () => {
+      const testReporter = new SelfHealingReporter();
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      const testCase = createMockTestCase();
+      const testResult = createMockTestResult("failed", {
+        errors: [
+          {
+            message: "Error with\ttabs",
+            snippet: "function test() {\n\treturn true;\n}",
+          },
+        ],
+      });
+
+      testReporter.onTestEnd(testCase, testResult);
+      const failures = testReporter.getFailures();
+
+      expect(failures[0].errors[0].message).toBe("Error with  tabs");
+      expect(failures[0].errors[0].snippet).toBe(
+        "function test() {\n  return true;\n}"
+      );
+    });
+
+    it("sollte mehrfache Leerzeilen kollabieren", () => {
+      const testReporter = new SelfHealingReporter();
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      const testCase = createMockTestCase();
+      const testResult = createMockTestResult("failed", {
+        errors: [
+          {
+            message: "Error\n\n\n\nwith many lines",
+          },
+        ],
+      });
+
+      testReporter.onTestEnd(testCase, testResult);
+      const failures = testReporter.getFailures();
+
+      expect(failures[0].errors[0].message).toBe("Error\n\nwith many lines");
+    });
+
+    it("sollte Trailing Whitespace entfernen", () => {
+      const testReporter = new SelfHealingReporter();
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      const testCase = createMockTestCase();
+      const testResult = createMockTestResult("failed", {
+        errors: [
+          {
+            message: "Error message   \nSecond line\t",
+          },
+        ],
+      });
+
+      testReporter.onTestEnd(testCase, testResult);
+      const failures = testReporter.getFailures();
+
+      expect(failures[0].errors[0].message).toBe("Error message\nSecond line");
+    });
+
+    it("sollte null/undefined Werte korrekt behandeln", () => {
+      const testReporter = new SelfHealingReporter();
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      const testCase = createMockTestCase();
+      const testResult = createMockTestResult("failed", {
+        errors: [
+          {
+            message: "Error",
+            stack: undefined,
+            snippet: undefined,
+          },
+        ],
+      });
+
+      testReporter.onTestEnd(testCase, testResult);
+      const failures = testReporter.getFailures();
+
+      expect(failures[0].errors[0].message).toBe("Error");
+      expect(failures[0].errors[0].stack).toBe("");
+      expect(failures[0].errors[0].snippet).toBe("");
+    });
+  });
 });

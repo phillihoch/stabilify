@@ -31,19 +31,19 @@ export default defineConfig({
 
 ### Reporter-Optionen
 
-| Option | Typ | Beschreibung |
-|--------|-----|--------------|
+| Option       | Typ      | Beschreibung                                        |
+| ------------ | -------- | --------------------------------------------------- |
 | `outputFile` | `string` | Basis-Dateiname oder relativer Pfad für die Ausgabe |
 
 ### Umgebungsvariablen
 
 Die Konfiguration funktioniert analog zum Playwright JSON Reporter:
 
-| Umgebungsvariable | Beschreibung | Default |
-|-------------------|--------------|---------|
-| `STABILIFY_OUTPUT_DIR` | Verzeichnis für die Ausgabe. Ignoriert wenn `OUTPUT_FILE` gesetzt. | `self-healing-output` |
-| `STABILIFY_OUTPUT_NAME` | Basis-Dateiname, relativ zum Output-Verzeichnis | `failures-{timestamp}.json` |
-| `STABILIFY_OUTPUT_FILE` | Vollständiger Pfad. Überschreibt `OUTPUT_DIR` und `OUTPUT_NAME` | - |
+| Umgebungsvariable       | Beschreibung                                                       | Default                     |
+| ----------------------- | ------------------------------------------------------------------ | --------------------------- |
+| `STABILIFY_OUTPUT_DIR`  | Verzeichnis für die Ausgabe. Ignoriert wenn `OUTPUT_FILE` gesetzt. | `self-healing-output`       |
+| `STABILIFY_OUTPUT_NAME` | Basis-Dateiname, relativ zum Output-Verzeichnis                    | `failures-{timestamp}.json` |
+| `STABILIFY_OUTPUT_FILE` | Vollständiger Pfad. Überschreibt `OUTPUT_DIR` und `OUTPUT_NAME`    | -                           |
 
 ### Priorität
 
@@ -77,6 +77,19 @@ STABILIFY_OUTPUT_DIR=my-reports npx playwright test
 ```
 
 Ausgabe: `{projekt}/my-reports/failures-{timestamp}.json`
+
+## Text-Sanitization
+
+Alle Textausgaben werden automatisch von ANSI-Codes und anderen nicht-informativen Zeichen bereinigt, um die Daten KI-freundlicher zu machen:
+
+- ✅ ANSI Escape Codes werden entfernt (`\u001b[31m`, `\u001b[0m`, etc.)
+- ✅ Tabs werden in Spaces umgewandelt (2 Spaces pro Tab)
+- ✅ Mehrfache Leerzeilen werden auf eine reduziert
+- ✅ Trailing Whitespace wird entfernt
+
+Dies betrifft alle Felder: `message`, `stack`, `snippet`, `stdout`, `stderr`, etc.
+
+Weitere Details: [docs/text-sanitization.md](docs/text-sanitization.md)
 
 ## Output-Format
 
@@ -138,4 +151,3 @@ npm link stabilify
 ## Lizenz
 
 MIT
-
