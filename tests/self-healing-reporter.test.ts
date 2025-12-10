@@ -534,8 +534,8 @@ describe("SelfHealingReporter", () => {
     });
   });
 
-  describe("Text Sanitization", () => {
-    it("sollte ANSI-Codes aus Fehlermeldungen entfernen", () => {
+  describe("Raw Text Output", () => {
+    it("sollte Fehlermeldungen unverändert speichern", () => {
       const testReporter = new SelfHealingReporter();
       testReporter.onBegin(createMockConfig(), {} as Suite);
 
@@ -555,15 +555,17 @@ describe("SelfHealingReporter", () => {
 
       expect(failures).toHaveLength(1);
       expect(failures[0].errors[0].message).toBe(
-        "Error: Expected element to be visible"
+        "\u001b[31mError:\u001b[0m Expected element to be visible"
       );
-      expect(failures[0].errors[0].stack).toBe("Stack trace");
+      expect(failures[0].errors[0].stack).toBe(
+        "\u001b[90mStack trace\u001b[0m"
+      );
       expect(failures[0].errors[0].snippet).toBe(
-        "await expect(page).toBeVisible();"
+        "\u001b[1mawait expect(page).toBeVisible();\u001b[0m"
       );
     });
 
-    it("sollte ANSI-Codes aus stdout/stderr entfernen", () => {
+    it("sollte stdout/stderr unverändert speichern", () => {
       const testReporter = new SelfHealingReporter();
       testReporter.onBegin(createMockConfig(), {} as Suite);
 
@@ -577,69 +579,10 @@ describe("SelfHealingReporter", () => {
       const failures = testReporter.getFailures();
 
       expect(failures).toHaveLength(1);
-      expect(failures[0].stdout).toEqual(["Success message"]);
-      expect(failures[0].stderr).toEqual(["Error message"]);
-    });
-
-    it("sollte Tabs in Spaces umwandeln", () => {
-      const testReporter = new SelfHealingReporter();
-      testReporter.onBegin(createMockConfig(), {} as Suite);
-
-      const testCase = createMockTestCase();
-      const testResult = createMockTestResult("failed", {
-        errors: [
-          {
-            message: "Error with\ttabs",
-            snippet: "function test() {\n\treturn true;\n}",
-          },
-        ],
-      });
-
-      testReporter.onTestEnd(testCase, testResult);
-      const failures = testReporter.getFailures();
-
-      expect(failures[0].errors[0].message).toBe("Error with  tabs");
-      expect(failures[0].errors[0].snippet).toBe(
-        "function test() {\n  return true;\n}"
-      );
-    });
-
-    it("sollte mehrfache Leerzeilen kollabieren", () => {
-      const testReporter = new SelfHealingReporter();
-      testReporter.onBegin(createMockConfig(), {} as Suite);
-
-      const testCase = createMockTestCase();
-      const testResult = createMockTestResult("failed", {
-        errors: [
-          {
-            message: "Error\n\n\n\nwith many lines",
-          },
-        ],
-      });
-
-      testReporter.onTestEnd(testCase, testResult);
-      const failures = testReporter.getFailures();
-
-      expect(failures[0].errors[0].message).toBe("Error\n\nwith many lines");
-    });
-
-    it("sollte Trailing Whitespace entfernen", () => {
-      const testReporter = new SelfHealingReporter();
-      testReporter.onBegin(createMockConfig(), {} as Suite);
-
-      const testCase = createMockTestCase();
-      const testResult = createMockTestResult("failed", {
-        errors: [
-          {
-            message: "Error message   \nSecond line\t",
-          },
-        ],
-      });
-
-      testReporter.onTestEnd(testCase, testResult);
-      const failures = testReporter.getFailures();
-
-      expect(failures[0].errors[0].message).toBe("Error message\nSecond line");
+      expect(failures[0].stdout).toEqual([
+        "\u001b[32mSuccess message\u001b[0m",
+      ]);
+      expect(failures[0].stderr).toEqual(["\u001b[31mError message\u001b[0m"]);
     });
 
     it("sollte null/undefined Werte korrekt behandeln", () => {
@@ -661,8 +604,8 @@ describe("SelfHealingReporter", () => {
       const failures = testReporter.getFailures();
 
       expect(failures[0].errors[0].message).toBe("Error");
-      expect(failures[0].errors[0].stack).toBe("");
-      expect(failures[0].errors[0].snippet).toBe("");
+      expect(failures[0].errors[0].stack).toBeUndefined();
+      expect(failures[0].errors[0].snippet).toBeUndefined();
     });
   });
 

@@ -19,7 +19,6 @@ import type {
 } from "@playwright/test/reporter";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { sanitizeText, sanitizeTextArray } from "./utils/text-sanitizer";
 
 /**
  * Environment-Informationen für den Report
@@ -184,9 +183,9 @@ export interface CollectedFailure {
   };
 
   // === Ausgaben ===
-  /** Standardausgabe des Tests (sanitized) */
+  /** Standardausgabe des Tests */
   stdout: string[];
-  /** Fehlerausgabe des Tests (sanitized) */
+  /** Fehlerausgabe des Tests */
   stderr: string[];
 
   // === Metadaten ===
@@ -388,8 +387,6 @@ class SelfHealingReporter implements Reporter {
 
   /**
    * Sammelt alle relevanten Informationen eines fehlgeschlagenen Tests.
-   * Alle Textfelder werden automatisch von ANSI-Codes und anderen nicht-informativen
-   * Zeichen bereinigt, um die Daten KI-freundlicher zu machen.
    *
    * @param test - Der fehlgeschlagene Testfall
    * @param result - Das Testergebnis mit Fehlerdetails
@@ -423,9 +420,9 @@ class SelfHealingReporter implements Reporter {
 
       // Fehlerdetails
       errors: result.errors.map((e) => ({
-        message: sanitizeText(e.message || "Unknown error"),
-        stack: sanitizeText(e.stack),
-        snippet: sanitizeText(e.snippet),
+        message: e.message || "Unknown error",
+        stack: e.stack,
+        snippet: e.snippet,
         location: e.location,
       })),
 
@@ -446,8 +443,8 @@ class SelfHealingReporter implements Reporter {
       videos: [],
 
       // Ausgaben
-      stdout: sanitizeTextArray(result.stdout.map(String)),
-      stderr: sanitizeTextArray(result.stderr.map(String)),
+      stdout: result.stdout.map(String),
+      stderr: result.stderr.map(String),
 
       // Metadaten
       duration: result.duration,
@@ -514,11 +511,7 @@ class SelfHealingReporter implements Reporter {
   }
 
   /**
-   * Extrahiert den Error-Context aus dem Playwright Attachment.
-   * Der Error-Context enthält den Page Snapshot (Accessibility-Tree) zum Fehlerzeitpunkt.
-   *
-   * @param attachment - Das error-context Attachment
-   * @returns Error-Context mit Pfad und optional dem Inhalt
+   * Extrahiert Error-Context von Playwright (Page Snapshot)
    */
   private extractErrorContext(attachment: {
     name: string;
@@ -533,7 +526,7 @@ class SelfHealingReporter implements Reporter {
       if (attachment.body) {
         return {
           path: "[embedded]",
-          content: sanitizeText(attachment.body.toString("utf-8")),
+          content: attachment.body.toString("utf-8"),
         };
       }
       return undefined;
@@ -545,7 +538,7 @@ class SelfHealingReporter implements Reporter {
         const content = fs.readFileSync(errorContextPath, "utf-8");
         return {
           path: errorContextPath,
-          content: sanitizeText(content),
+          content: content,
         };
       }
     } catch (error) {
@@ -555,9 +548,9 @@ class SelfHealingReporter implements Reporter {
       );
     }
 
-    // Fallback: Nur Pfad zurückgeben
     return {
       path: errorContextPath,
+      content: undefined,
     };
   }
 
@@ -574,11 +567,11 @@ class SelfHealingReporter implements Reporter {
           step.error === undefined ? "passed" : "failed";
 
         result.push({
-          name: sanitizeText(step.title),
+          name: step.title,
           status: stepStatus,
           duration: step.duration,
           category: step.category,
-          error: step.error ? sanitizeText(step.error.message) : undefined,
+          error: step.error ? step.error.message : undefined,
         });
       }
 
@@ -616,9 +609,9 @@ class SelfHealingReporter implements Reporter {
     return {
       status: "failed",
       duration: result.duration,
-      message: error ? sanitizeText(error.message) : undefined,
-      trace: error ? sanitizeText(error.stack) : undefined,
-      snippet: error ? sanitizeText(error.snippet) : undefined,
+      message: error ? error.message : undefined,
+      trace: error ? error.stack : undefined,
+      snippet: error ? error.snippet : undefined,
     };
   }
 

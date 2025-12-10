@@ -275,7 +275,6 @@ graph TD
         TEST1 --> SS2["screenshot-2.png"]
         TEST1 --> TR["trace.zip"]
         TEST1 --> VD["video.webm"]
-        TEST1 --> EC["error-context.md"]
 
         T1 --> TEST2["/{testId-2}/"]
         TEST2 --> SS3["screenshot-1.png"]
@@ -414,7 +413,7 @@ interface GetUploadUrlsRequest {
     testId: string; // Test-ID zur Zuordnung
     fileName: string; // z.B. "screenshot-1.png"
     contentType: string; // z.B. "image/png"
-    fileType: "screenshot" | "trace" | "video" | "error-context";
+    fileType: "screenshot" | "trace" | "video";
   }>;
 }
 
@@ -634,9 +633,6 @@ export const submitFailure = functions.https.onRequest(async (req, res) => {
       videos: files
         .filter((f) => f.name.includes("video"))
         .map((f) => f.publicUrl()),
-      errorContext: files
-        .filter((f) => f.name.includes("error-context"))
-        .map((f) => f.publicUrl()),
     };
 
     // In Firestore speichern
@@ -771,7 +767,7 @@ interface FileToUpload {
   localPath: string;
   fileName: string;
   contentType: string;
-  fileType: "screenshot" | "trace" | "video" | "error-context";
+  fileType: "screenshot" | "trace" | "video";
 }
 
 class StabilifyUploader {

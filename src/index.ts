@@ -11,14 +11,3 @@ export {
   type CollectedFailure,
   type SelfHealingReporterOptions,
 } from "./self-healing-reporter";
-
-// Text Sanitization Utilities Export
-export {
-  collapseEmptyLines,
-  normalizeTabs,
-  removeAnsiCodes,
-  sanitizeText,
-  sanitizeTextArray,
-  trimTrailingWhitespace,
-  type SanitizeOptions,
-} from "./utils/text-sanitizer";
