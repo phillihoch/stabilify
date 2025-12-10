@@ -170,6 +170,19 @@ export interface CollectedFailure {
   /** Pfade zu Video-Dateien */
   videos: string[];
 
+  // === Error Context ===
+  /**
+   * Error-Context von Playwright (Page Snapshot zum Fehlerzeitpunkt).
+   * Enthält den Accessibility-Tree der Seite im YAML-Format.
+   * Sehr wertvoll für KI-gestützte Fehleranalyse.
+   */
+  errorContext?: {
+    /** Pfad zur error-context.md Datei */
+    path: string;
+    /** Inhalt der error-context.md Datei (Page Snapshot) */
+    content?: string;
+  };
+
   // === Ausgaben ===
   /** Standardausgabe des Tests (sanitized) */
   stdout: string[];
@@ -451,6 +464,9 @@ class SelfHealingReporter implements Reporter {
         failure.traces.push(attachment.path || "[embedded]");
       } else if (attachment.contentType.startsWith("video/")) {
         failure.videos.push(attachment.path || "[embedded]");
+      } else if (attachment.name === "error-context") {
+        // Error-Context von Playwright extrahieren (Page Snapshot)
+        failure.errorContext = this.extractErrorContext(attachment);
       }
     }
 
@@ -495,6 +511,54 @@ class SelfHealingReporter implements Reporter {
     }
 
     return undefined;
+  }
+
+  /**
+   * Extrahiert den Error-Context aus dem Playwright Attachment.
+   * Der Error-Context enthält den Page Snapshot (Accessibility-Tree) zum Fehlerzeitpunkt.
+   *
+   * @param attachment - Das error-context Attachment
+   * @returns Error-Context mit Pfad und optional dem Inhalt
+   */
+  private extractErrorContext(attachment: {
+    name: string;
+    contentType: string;
+    path?: string;
+    body?: Buffer;
+  }): CollectedFailure["errorContext"] {
+    const errorContextPath = attachment.path;
+
+    if (!errorContextPath) {
+      // Falls nur embedded Body vorhanden
+      if (attachment.body) {
+        return {
+          path: "[embedded]",
+          content: sanitizeText(attachment.body.toString("utf-8")),
+        };
+      }
+      return undefined;
+    }
+
+    // Versuche den Inhalt zu lesen
+    try {
+      if (fs.existsSync(errorContextPath)) {
+        const content = fs.readFileSync(errorContextPath, "utf-8");
+        return {
+          path: errorContextPath,
+          content: sanitizeText(content),
+        };
+      }
+    } catch (error) {
+      console.warn(
+        `[stabilify] Konnte error-context nicht lesen: ${errorContextPath}`,
+        error
+      );
+    }
+
+    // Fallback: Nur Pfad zurückgeben
+    return {
+      path: errorContextPath,
+    };
   }
 
   /**

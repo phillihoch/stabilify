@@ -15,6 +15,7 @@ vi.mock("fs", () => ({
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
+  readFileSync: vi.fn(),
 }));
 
 // Umgebungsvariablen zurücksetzen nach jedem Test
@@ -309,6 +310,65 @@ describe("SelfHealingReporter", () => {
 
       const failures = reporter.getFailures();
       expect(failures[0].videos).toContain("/path/to/video.webm");
+    });
+
+    it("sollte Error-Context korrekt extrahieren", () => {
+      const testCase = createMockTestCase();
+      const errorContextContent = `# Page snapshot
+
+\`\`\`yaml
+- document [ref=s1]:
+  - heading "Welcome" [level=1]
+  - button "Submit" [ref=s2]
+\`\`\``;
+
+      // Mock fs.readFileSync für error-context Datei
+      vi.mocked(fs.readFileSync).mockReturnValueOnce(errorContextContent);
+
+      const result = createMockTestResult("failed", {
+        attachments: [
+          {
+            name: "error-context",
+            contentType: "text/markdown",
+            path: "/path/to/error-context.md",
+          },
+        ],
+      });
+
+      reporter.onTestEnd(testCase, result);
+
+      const failures = reporter.getFailures();
+      expect(failures[0].errorContext).toBeDefined();
+      expect(failures[0].errorContext?.path).toBe("/path/to/error-context.md");
+      expect(failures[0].errorContext?.content).toContain("Page snapshot");
+      expect(failures[0].errorContext?.content).toContain('button "Submit"');
+    });
+
+    it("sollte Error-Context mit embedded body verarbeiten", () => {
+      const testCase = createMockTestCase();
+      const errorContextContent = `# Page snapshot
+
+\`\`\`yaml
+- document [ref=s1]:
+  - heading "Test" [level=1]
+\`\`\``;
+
+      const result = createMockTestResult("failed", {
+        attachments: [
+          {
+            name: "error-context",
+            contentType: "text/markdown",
+            body: Buffer.from(errorContextContent),
+          },
+        ],
+      });
+
+      reporter.onTestEnd(testCase, result);
+
+      const failures = reporter.getFailures();
+      expect(failures[0].errorContext).toBeDefined();
+      expect(failures[0].errorContext?.path).toBe("[embedded]");
+      expect(failures[0].errorContext?.content).toContain("Page snapshot");
     });
   });
 
