@@ -31,9 +31,58 @@ export default defineConfig({
 
 ### Reporter-Optionen
 
-| Option       | Typ      | Beschreibung                                        |
-| ------------ | -------- | --------------------------------------------------- |
-| `outputFile` | `string` | Basis-Dateiname oder relativer Pfad für die Ausgabe |
+| Option        | Typ                 | Beschreibung                                        |
+| ------------- | ------------------- | --------------------------------------------------- |
+| `outputFile`  | `string`            | Basis-Dateiname oder relativer Pfad für die Ausgabe |
+| `environment` | `ReportEnvironment` | Umgebungsinformationen für den Report (siehe unten) |
+
+### Environment-Optionen
+
+Du kannst zusätzliche Kontextinformationen über die Testumgebung mitgeben:
+
+```typescript
+export default defineConfig({
+  reporter: [
+    ["list"],
+    [
+      "stabilify/reporter",
+      {
+        outputFile: "stabilify.json",
+        environment: {
+          appName: "MyApp",
+          appVersion: "1.0.0",
+          buildName: "CI Build #123",
+          buildNumber: "123",
+          buildUrl: "https://ci.example.com/builds/123",
+          repositoryName: "my-org/my-repo",
+          repositoryUrl: "https://github.com/my-org/my-repo",
+          branchName: "main",
+          commit: "abc123def",
+          testEnvironment: "staging",
+        },
+      },
+    ],
+  ],
+});
+```
+
+Alle Environment-Felder sind optional:
+
+| Feld              | Beschreibung                      |
+| ----------------- | --------------------------------- |
+| `appName`         | Name der Anwendung                |
+| `appVersion`      | Version der Anwendung             |
+| `osPlatform`      | Betriebssystem-Plattform          |
+| `osRelease`       | Betriebssystem-Release            |
+| `osVersion`       | Betriebssystem-Version            |
+| `buildName`       | Name des CI-Builds                |
+| `buildNumber`     | Nummer des CI-Builds              |
+| `buildUrl`        | URL zum CI-Build                  |
+| `repositoryName`  | Name des Repositories             |
+| `repositoryUrl`   | URL zum Repository                |
+| `branchName`      | Git-Branch                        |
+| `commit`          | Git-Commit-Hash                   |
+| `testEnvironment` | Testumgebung (z.B. staging, prod) |
 
 ### Umgebungsvariablen
 
@@ -103,9 +152,13 @@ Der Reporter erstellt eine JSON-Datei mit folgendem Format:
     {
       "testId": "abc123",
       "title": "tests › example.spec.ts › should work",
+      "suite": "Login Tests > Authentication",
       "file": "/path/to/tests/example.spec.ts",
       "location": { "line": 10, "column": 5 },
       "projectName": "chromium",
+      "browser": "chromium 120.0.0",
+      "flaky": false,
+      "rawStatus": "failed",
       "errors": [
         {
           "message": "Expected element to be visible",
@@ -114,7 +167,27 @@ Der Reporter erstellt eine JSON-Datei mit folgendem Format:
         }
       ],
       "steps": [
-        { "title": "Click button", "duration": 100, "category": "pw:api" }
+        {
+          "name": "Click login button",
+          "status": "passed",
+          "duration": 100,
+          "category": "test.step"
+        },
+        {
+          "name": "Verify dashboard",
+          "status": "failed",
+          "duration": 50,
+          "category": "test.step",
+          "error": "Element not found"
+        }
+      ],
+      "retryAttempts": [
+        {
+          "status": "failed",
+          "duration": 4500,
+          "message": "Timeout waiting for element",
+          "trace": "Error: Timeout..."
+        }
       ],
       "screenshots": ["/path/to/screenshot.png"],
       "traces": ["/path/to/trace.zip"],
@@ -122,13 +195,31 @@ Der Reporter erstellt eine JSON-Datei mit folgendem Format:
       "stdout": ["Log output"],
       "stderr": [],
       "duration": 5000,
-      "retry": 0,
+      "retry": 1,
       "status": "failed",
-      "timestamp": "2025-12-09T11:00:00.000Z"
+      "timestamp": "2025-12-09T11:00:00.000Z",
+      "environment": {
+        "appName": "MyApp",
+        "branchName": "main",
+        "commit": "abc123"
+      }
     }
   ]
 }
 ```
+
+### Neue Felder (CTRF-inspiriert)
+
+| Feld             | Typ       | Beschreibung                                              |
+| ---------------- | --------- | --------------------------------------------------------- |
+| `suite`          | `string`  | Hierarchischer Suite-Pfad (z.B. "Parent > Child")         |
+| `browser`        | `string`  | Browser-Name und Version                                  |
+| `flaky`          | `boolean` | `true` wenn Test nach Retries bestanden hat               |
+| `rawStatus`      | `string`  | Originaler Playwright-Status (`failed`, `timedOut`, etc.) |
+| `retryAttempts`  | `array`   | Details aller vorherigen fehlgeschlagenen Versuche        |
+| `steps[].status` | `string`  | Status jedes Steps (`passed` oder `failed`)               |
+| `steps[].error`  | `string`  | Fehlermeldung wenn Step fehlgeschlagen                    |
+| `environment`    | `object`  | Konfigurierte Umgebungsinformationen                      |
 
 ## Entwicklung
 

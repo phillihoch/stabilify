@@ -96,8 +96,18 @@ function createMockTestResult(
         : [],
     attachments: [],
     steps: [
-      { title: "Click button", duration: 100, category: "pw:api" },
-      { title: "Expect visible", duration: 50, category: "expect" },
+      {
+        title: "Click button",
+        duration: 100,
+        category: "test.step",
+        steps: [],
+      },
+      {
+        title: "Expect visible",
+        duration: 50,
+        category: "test.step",
+        steps: [],
+      },
     ],
     stdout: ["Log output"],
     stderr: [],
@@ -343,7 +353,7 @@ describe("SelfHealingReporter", () => {
       expect(outputPath).toContain("failures-");
     });
 
-    it("sollte outputFile Option verwenden", () => {
+    it("sollte outputFile Option als Dateiname verwenden (ohne Pfad)", () => {
       const testReporter = new SelfHealingReporter({
         configDir: "/my/project",
         outputFile: "my-failures.json",
@@ -351,6 +361,17 @@ describe("SelfHealingReporter", () => {
 
       expect(testReporter.getOutputPath()).toBe(
         path.join("/my/project", "self-healing-output", "my-failures.json")
+      );
+    });
+
+    it("sollte outputFile Option mit Pfad direkt relativ zu configDir verwenden", () => {
+      const testReporter = new SelfHealingReporter({
+        configDir: "/my/project",
+        outputFile: "playwright-results/stabilify.json",
+      });
+
+      expect(testReporter.getOutputPath()).toBe(
+        path.join("/my/project", "playwright-results/stabilify.json")
       );
     });
 
@@ -582,6 +603,303 @@ describe("SelfHealingReporter", () => {
       expect(failures[0].errors[0].message).toBe("Error");
       expect(failures[0].errors[0].stack).toBe("");
       expect(failures[0].errors[0].snippet).toBe("");
+    });
+  });
+
+  describe("CTRF-inspirierte Features", () => {
+    beforeEach(() => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+    });
+
+    describe("Suite-Pfad", () => {
+      it("sollte den Suite-Pfad korrekt aufbauen", () => {
+        const parentSuite: Partial<Suite> = {
+          title: "Parent Suite",
+          parent: undefined,
+        };
+        const childSuite: Partial<Suite> = {
+          title: "Child Suite",
+          parent: parentSuite as Suite,
+        };
+        const testCase = createMockTestCase({
+          parent: childSuite as Suite,
+        });
+
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        testReporter.onTestEnd(testCase, createMockTestResult("failed"));
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.suite).toBe("Parent Suite > Child Suite");
+      });
+    });
+
+    describe("Flaky-Detection", () => {
+      it("sollte flaky als false setzen bei fehlgeschlagenen Tests", () => {
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        const testCase = createMockTestCase();
+        const testResult = createMockTestResult("failed");
+
+        testReporter.onTestEnd(testCase, testResult);
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.flaky).toBe(false);
+      });
+    });
+
+    describe("Retry-Attempts", () => {
+      it("sollte vorherige fehlgeschlagene Versuche sammeln", () => {
+        const failedResult1: Partial<TestResult> = {
+          status: "failed",
+          duration: 1000,
+          errors: [{ message: "First error", stack: "Stack 1" }],
+          steps: [],
+          attachments: [],
+          stdout: [],
+          stderr: [],
+          retry: 0,
+        };
+        const failedResult2: Partial<TestResult> = {
+          status: "failed",
+          duration: 2000,
+          errors: [{ message: "Second error", stack: "Stack 2" }],
+          steps: [],
+          attachments: [],
+          stdout: [],
+          stderr: [],
+          retry: 1,
+        };
+        const currentResult: Partial<TestResult> = {
+          status: "failed",
+          duration: 3000,
+          errors: [{ message: "Final error", stack: "Stack 3" }],
+          steps: [],
+          attachments: [],
+          stdout: [],
+          stderr: [],
+          retry: 2,
+        };
+
+        const testCase = createMockTestCase({
+          results: [
+            failedResult1 as TestResult,
+            failedResult2 as TestResult,
+            currentResult as TestResult,
+          ],
+        });
+
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        testReporter.onTestEnd(testCase, currentResult as TestResult);
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.retryAttempts).toHaveLength(2);
+        expect(failure.retryAttempts?.[0].message).toBe("First error");
+        expect(failure.retryAttempts?.[0].duration).toBe(1000);
+        expect(failure.retryAttempts?.[1].message).toBe("Second error");
+        expect(failure.retryAttempts?.[1].duration).toBe(2000);
+      });
+
+      it("sollte keine retryAttempts bei erstem Versuch haben", () => {
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        const testCase = createMockTestCase({ results: [] });
+        const testResult = createMockTestResult("failed");
+
+        testReporter.onTestEnd(testCase, testResult);
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.retryAttempts).toBeUndefined();
+      });
+    });
+
+    describe("Browser-Info Extraktion", () => {
+      it("sollte Browser-Info aus metadata.json extrahieren", () => {
+        const metadata = { name: "chromium", version: "120.0.0" };
+        const testResult = createMockTestResult("failed", {
+          attachments: [
+            {
+              name: "metadata.json",
+              contentType: "application/json",
+              body: Buffer.from(JSON.stringify(metadata)),
+            },
+          ],
+        });
+
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        testReporter.onTestEnd(createMockTestCase(), testResult);
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.browser).toBe("chromium 120.0.0");
+      });
+
+      it("sollte undefined zurückgeben wenn keine metadata.json vorhanden", () => {
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        testReporter.onTestEnd(
+          createMockTestCase(),
+          createMockTestResult("failed")
+        );
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.browser).toBeUndefined();
+      });
+    });
+
+    describe("Steps mit Status", () => {
+      it("sollte Steps mit passed Status verarbeiten", () => {
+        const testResult = createMockTestResult("failed", {
+          steps: [
+            {
+              title: "Step 1",
+              duration: 100,
+              category: "test.step",
+              steps: [],
+            },
+            {
+              title: "Step 2",
+              duration: 200,
+              category: "test.step",
+              steps: [],
+            },
+          ],
+        });
+
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        testReporter.onTestEnd(createMockTestCase(), testResult);
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.steps).toHaveLength(2);
+        expect(failure.steps[0].status).toBe("passed");
+        expect(failure.steps[0].name).toBe("Step 1");
+        expect(failure.steps[1].status).toBe("passed");
+      });
+
+      it("sollte Steps mit failed Status bei Fehler markieren", () => {
+        const testResult = createMockTestResult("failed", {
+          steps: [
+            {
+              title: "Step 1",
+              duration: 100,
+              category: "test.step",
+              error: { message: "Step failed" },
+              steps: [],
+            },
+          ],
+        });
+
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        testReporter.onTestEnd(createMockTestCase(), testResult);
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.steps[0].status).toBe("failed");
+        expect(failure.steps[0].error).toBe("Step failed");
+      });
+
+      it("sollte nur test.step Kategorien verarbeiten", () => {
+        const testResult = createMockTestResult("failed", {
+          steps: [
+            { title: "API call", duration: 100, category: "pw:api", steps: [] },
+            {
+              title: "Test Step",
+              duration: 200,
+              category: "test.step",
+              steps: [],
+            },
+            { title: "Expect", duration: 50, category: "expect", steps: [] },
+          ],
+        });
+
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        testReporter.onTestEnd(createMockTestCase(), testResult);
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.steps).toHaveLength(1);
+        expect(failure.steps[0].name).toBe("Test Step");
+      });
+    });
+
+    describe("Environment-Optionen", () => {
+      it("sollte Environment-Informationen auf Report-Ebene speichern (verschachtelt)", async () => {
+        const environment = {
+          appName: "MyApp",
+          appVersion: "1.0.0",
+          branchName: "main",
+          commit: "abc123",
+          testEnvironment: "staging",
+        };
+
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+          environment,
+          outputFile: "test.json",
+        });
+        await testReporter.onEnd({ status: "passed" } as FullResult);
+
+        const call = vi.mocked(fs.writeFileSync).mock.calls[0];
+        const content = JSON.parse(call[1] as string);
+        expect(content.environment).toEqual(environment);
+      });
+
+      it("sollte flache Environment-Optionen akzeptieren", async () => {
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+          appName: "MyApp",
+          appVersion: "1.0.0",
+          branchName: "main",
+          outputFile: "test.json",
+        });
+        await testReporter.onEnd({ status: "passed" } as FullResult);
+
+        const call = vi.mocked(fs.writeFileSync).mock.calls[0];
+        const content = JSON.parse(call[1] as string);
+        expect(content.environment).toEqual({
+          appName: "MyApp",
+          appVersion: "1.0.0",
+          branchName: "main",
+        });
+      });
+
+      it("sollte leeres Environment nicht im Report speichern", async () => {
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+          outputFile: "test.json",
+        });
+        await testReporter.onEnd({ status: "passed" } as FullResult);
+
+        const call = vi.mocked(fs.writeFileSync).mock.calls[0];
+        const content = JSON.parse(call[1] as string);
+        expect(content.environment).toBeUndefined();
+      });
+    });
+
+    describe("Neue Felder", () => {
+      it("sollte rawStatus setzen", () => {
+        const testReporter = new SelfHealingReporter({
+          configDir: "/test/project",
+        });
+        testReporter.onTestEnd(
+          createMockTestCase(),
+          createMockTestResult("timedOut")
+        );
+
+        const failure = testReporter.getFailures()[0];
+        expect(failure.rawStatus).toBe("timedOut");
+      });
     });
   });
 });
