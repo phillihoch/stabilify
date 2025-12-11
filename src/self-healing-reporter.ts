@@ -19,6 +19,7 @@ import type {
 } from "@playwright/test/reporter";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { StabilifyUploader } from "./uploader/stabilify-uploader";
 import { TestRunTracker } from "./utils/test-run-tracker";
 
 /**
@@ -62,8 +63,6 @@ export interface UploadOptions {
   enabled: boolean;
   /** API-Schlüssel für die Authentifizierung (kann aus Umgebungsvariable gelesen werden) */
   apiKey: string;
-  /** Server-URL (Standard: https://api.stabilify.dev) */
-  endpoint?: string;
   /** Anzahl der Wiederholungsversuche bei Fehlern (Standard: 3) */
   retryAttempts?: number;
   /** Verzögerung zwischen Wiederholungen in Millisekunden (Standard: 1000) */
@@ -409,23 +408,7 @@ class SelfHealingReporter implements Reporter {
       upload.retryDelayMs = 1000;
     }
 
-    // Validiere endpoint
-    if (upload.endpoint) {
-      try {
-        new URL(upload.endpoint);
-      } catch {
-        console.warn(
-          `[stabilify] ⚠️  Ungültige URL für endpoint: ${upload.endpoint}. Verwende Standard: https://api.stabilify.dev`
-        );
-        upload.endpoint = "https://api.stabilify.dev";
-      }
-    }
-
     console.log("[stabilify] ✅ Upload-Konfiguration validiert");
-    console.log(
-      "[stabilify] Endpoint:",
-      upload.endpoint || "https://api.stabilify.dev"
-    );
     console.log("[stabilify] Retry-Versuche:", upload.retryAttempts ?? 3);
   }
 
@@ -502,6 +485,11 @@ class SelfHealingReporter implements Reporter {
     );
     console.log(`[stabilify] ${this.testRunTracker.getSummary()}`);
     await this.writeReport();
+
+    // Upload-Flow ausführen wenn aktiviert und Failures vorhanden
+    if (this.options.upload?.enabled && this.failures.length > 0) {
+      await this.uploadFailures();
+    }
   }
 
   /**
@@ -797,6 +785,50 @@ class SelfHealingReporter implements Reporter {
    */
   getOutputPath(): string {
     return this.resolveOutputPath();
+  }
+
+  /**
+   * Führt den Upload-Flow aus.
+   *
+   * Erstellt einen StabilifyUploader und lädt alle Failures mit ihren
+   * Artefakten (Screenshots, Traces, Videos) zum Server hoch.
+   *
+   * Fehler beim Upload werden geloggt, aber nicht geworfen, um den
+   * Test-Run nicht zu beeinträchtigen.
+   */
+  private async uploadFailures(): Promise<void> {
+    if (!this.options.upload?.apiKey) {
+      console.error(
+        "[stabilify] ❌ Upload aktiviert, aber kein API-Key konfiguriert"
+      );
+      return;
+    }
+
+    try {
+      console.log("[stabilify] Starte Upload-Flow...");
+
+      // Uploader initialisieren
+      const uploader = new StabilifyUploader({
+        apiKey: this.options.upload.apiKey,
+      });
+
+      // Report-ID aus dem TestRunTracker holen
+      const testRunInfo = this.testRunTracker.getTestRunInfo();
+      const reportId = testRunInfo.reportId;
+
+      // Upload-Flow ausführen
+      const result = await uploader.uploadAll(reportId, this.failures);
+
+      console.log(
+        `[stabilify] ✅ Upload erfolgreich: ${result.failureIds.length} Failures hochgeladen`
+      );
+      console.log(
+        `[stabilify] Verknüpfte Dateien: ${result.linkedFiles.length} Test(s)`
+      );
+    } catch (error) {
+      console.error("[stabilify] ❌ Upload fehlgeschlagen:", error);
+      // Fehler nicht werfen, um Test-Run nicht zu beeinträchtigen
+    }
   }
 }
 
