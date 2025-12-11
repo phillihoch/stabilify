@@ -15,9 +15,8 @@ Diese Übersicht zeigt die empfohlene Reihenfolge zur Implementierung der Stabil
 - **Warum zuerst?** Alle anderen Stories brauchen diese Typen als Grundlage
 - **Umfang:**
   - `Tenant` Interface
-  - `TestRun` Interface (NEU - für Test-Run Tracking)
   - `ApiKey` Interface
-  - `Failure` Interface (mit `reportId` Referenz zu TestRun)
+  - `Failure` Interface (mit `reportId` zur Gruppierung)
   - `Solution` Interface
 
 #### Story 07: API Key Generator und Hasher Utility
@@ -49,8 +48,7 @@ Diese Übersicht zeigt die empfohlene Reihenfolge zur Implementierung der Stabil
 - **Warum?** Zweiter Schritt im Upload-Flow - speichert Failure-Daten
 - **Umfang:**
   - Failures in Firestore speichern
-  - TestRun-Dokument erstellen (falls noch nicht vorhanden)
-  - TestRun-Statistiken aktualisieren (failedTests, totalTests)
+  - reportId zur Gruppierung verwenden
   - Storage-Dateien mit Failures verknüpfen
 - **✅ Meilenstein:** Backend-Flow ist manuell testbar (z.B. mit curl/Postman)
 
@@ -84,7 +82,6 @@ Diese Übersicht zeigt die empfohlene Reihenfolge zur Implementierung der Stabil
   - Signierte URLs vom Server holen
   - Dateien hochladen
   - Failures mit reportId und Run-Metadaten senden
-  - TestRun-Informationen übermitteln
 - **✅ Meilenstein:** Kompletter Upload-Flow funktioniert End-to-End
 
 ---
@@ -168,63 +165,28 @@ Starte mit **Phase 1-3** (Stories 06, 07, 01, 02, 03, 09, 11, 10) für einen fun
 - ✅ Testbarer Upload-Flow
 - ✅ Frühe Integration zwischen Client und Server
 - ✅ Schnelles Feedback zur Architektur
-- ✅ Test-Run Tracking mit Metadaten
+- ✅ reportId zur Gruppierung von Failures
 
 Danach kannst du entscheiden, ob du zuerst die Robustheit (Phase 4) oder die AI-Features (Phase 5) implementierst.
 
 ---
 
-## 🔗 Test-Run Tracking (Querschnittsfunktion)
+## 🔗 Report ID Gruppierung
 
-Die **Test-Run Tracking** Funktionalität ist in mehrere Stories integriert:
+Die **reportId** dient zur Gruppierung aller Failures eines Test-Runs:
 
-### Was ist ein Test-Run?
-
-Ein Test-Run repräsentiert einen kompletten Durchlauf aller Tests (z.B. ein CI-Job). Jeder Run bekommt eine eindeutige `reportId` (UUID), die:
-
-- Vom Reporter beim Start generiert wird
-- Bei allen Failures dieses Runs gespeichert wird
-- Run-Level Metadaten ermöglicht (Branch, Commit, CI-Job-ID)
-- Statistiken pro Run erlaubt (z.B. "5 von 10 Tests failed")
-
-### Vorteile
-
-1. **Gruppierung**: Alle Failures eines Runs zusammen anzeigen
-2. **Zeitliche Korrelation**: Welche Tests sind im gleichen CI-Run fehlgeschlagen?
-3. **CI/CD Integration**: Branch, Commit-Hash, CI-Job-ID werden gespeichert
-4. **Statistiken**: Erfolgsrate pro Run, Trends über Zeit
-5. **Dashboard**: Übersicht aller Test-Runs mit Status
-
-### Datenmodell
+- Vom Reporter beim Start generiert (UUID)
+- Bei allen Failures dieses Runs gespeichert
+- Ermöglicht Gruppierung und Filterung im Dashboard
+- Kann mit Run-Metadaten (Branch, Commit, CI-Job-ID) angereichert werden
 
 ```typescript
-interface TestRun {
-  id: string; // reportId (UUID)
-  tenantId: string;
-  branch?: string;
-  commit?: string;
-  ciJobId?: string;
-  totalTests: number;
-  failedTests: number;
-  passedTests: number;
-  status: "running" | "completed" | "failed";
-  startedAt: Timestamp;
-  completedAt?: Timestamp;
-}
-
 interface Failure {
   // ...
-  reportId: string; // Referenz zum TestRun
+  reportId: string; // Report ID zur Gruppierung aller Failures eines Test-Runs
   // ...
 }
 ```
-
-### Betroffene Stories
-
-- **Story 06**: TestRun Interface definieren
-- **Story 03**: TestRun-Dokument erstellen/aktualisieren
-- **Story 09**: reportId generieren, Metadaten sammeln
-- **Story 10**: Run-Metadaten beim Upload senden
 
 ---
 

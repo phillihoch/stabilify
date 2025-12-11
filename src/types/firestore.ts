@@ -6,9 +6,8 @@
  *
  * Collections:
  * - tenants: Mandanten-Verwaltung für SaaS Multi-Tenancy
- * - testRuns: Test-Run Tracking für Gruppierung und Metadaten
  * - apiKeys: API Keys für Authentifizierung (gehashte Speicherung)
- * - failures: Fehlgeschlagene Tests mit Details und Medien
+ * - failures: Fehlgeschlagene Tests mit Details und Medien (reportId zur Gruppierung)
  * - solutions: AI-generierte Lösungsvorschläge
  *
  * @module types/firestore
@@ -34,20 +33,6 @@ export type ApiKeyScope =
   | "solutions:read"
   /** Berechtigung zum Hochladen von Dateien (Screenshots, Traces, Videos) */
   | "storage:write";
-
-/**
- * Status eines Test-Runs.
- * Beschreibt den aktuellen Zustand eines Test-Durchlaufs.
- */
-export type TestRunStatus =
-  /** Test-Run läuft noch */
-  | "running"
-  /** Test-Run erfolgreich abgeschlossen */
-  | "completed"
-  /** Test-Run fehlgeschlagen */
-  | "failed"
-  /** Test-Run abgebrochen */
-  | "cancelled";
 
 /**
  * Status eines Failures.
@@ -108,7 +93,15 @@ export type SolutionStrategyType =
 /**
  * Unterstützte CI/CD Provider.
  */
-export type CiProvider = "github" | "gitlab" | "jenkins" | "circleci" | "other";
+export type CiProvider =
+  | "github" // GitHub Actions
+  | "gitlab" // GitLab CI
+  | "jenkins"
+  | "circleci"
+  | "travis-ci"
+  | "azure-pipelines"
+  | "bitbucket-pipelines"
+  | "teamcity";
 
 /**
  * Verfügbare Tarif-Pläne.
@@ -170,69 +163,6 @@ export interface Tenant {
   updatedAt: Timestamp;
   /** Ist der Account aktiv? */
   active: boolean;
-}
-
-// ============================================================================
-// INTERFACES - TestRun
-// ============================================================================
-
-/**
- * TestRun - Collection: `testRuns`
- *
- * Repräsentiert einen Test-Durchlauf (z.B. CI-Job) mit allen Metadaten.
- * Gruppiert mehrere Failures zu einem logischen Run.
- *
- * Die `id` entspricht der `reportId` (UUID), die vom Reporter generiert wird.
- */
-export interface TestRun {
-  /** reportId (UUID, vom Reporter generiert) */
-  id: string;
-  /** Referenz zum Tenant */
-  tenantId: string;
-
-  // CI/CD Context
-  /** Git Branch (z.B. "main", "feature/xyz") */
-  branch?: string;
-  /** Git Commit Hash */
-  commit?: string;
-  /** CI Job ID (z.B. GitHub Actions Run ID) */
-  ciJobId?: string;
-  /** CI/CD Provider */
-  ciProvider?: CiProvider;
-  /** Link zum CI-Job */
-  ciUrl?: string;
-
-  // Statistiken
-  /** Gesamtanzahl Tests */
-  totalTests: number;
-  /** Anzahl fehlgeschlagener Tests */
-  failedTests: number;
-  /** Anzahl erfolgreicher Tests */
-  passedTests: number;
-  /** Anzahl übersprungener Tests */
-  skippedTests: number;
-
-  // Timing
-  /** Wann der Test-Run gestartet wurde */
-  startedAt: Timestamp;
-  /** Wann der Test-Run beendet wurde */
-  completedAt?: Timestamp;
-  /** Dauer in Millisekunden */
-  duration?: number;
-
-  // Status
-  /** Aktueller Status des Test-Runs */
-  status: TestRunStatus;
-
-  // Environment
-  /** Umgebungsinformationen (OS, Browser, etc.) */
-  environment: ReportEnvironment;
-
-  // Metadata
-  /** Erstellungszeitpunkt */
-  createdAt: Timestamp;
-  /** Letzter Aktualisierungszeitpunkt */
-  updatedAt: Timestamp;
 }
 
 // ============================================================================
@@ -375,14 +305,15 @@ export interface ErrorContext {
  * Failure - Collection: `failures`
  *
  * Repräsentiert einen fehlgeschlagenen Test mit allen Details.
- * Enthält Referenzen zu Tenant und TestRun sowie verknüpfte Medien.
+ * Enthält Referenzen zu Tenant sowie verknüpfte Medien.
+ * Die reportId dient zur Gruppierung aller Failures eines Test-Runs.
  */
 export interface Failure {
   /** Eindeutige ID (Auto-generated) */
   id: string;
   /** Referenz zum Tenant (aus API Key ermittelt) */
   tenantId: string;
-  /** Referenz zum TestRun (reportId UUID) */
+  /** Report ID zur Gruppierung aller Failures eines Test-Runs (UUID) */
   reportId: string;
 
   // Test-Identifikation

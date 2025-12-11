@@ -4,19 +4,15 @@
 
 **WHO:** Als Backend-Entwickler
 
-**WHAT:** Möchte ich eine Firebase Cloud Function `submitFailure` implementieren, die Failure-Daten und Test-Run Metadaten aus dem Reporter entgegennimmt, validiert und in Firestore speichert
+**WHAT:** Möchte ich eine Firebase Cloud Function `submitFailure` implementieren, die Failure-Daten aus dem Reporter entgegennimmt, validiert und in Firestore speichert
 
-**WHY:** Damit Test-Failures zentral gespeichert werden, Test-Runs getrackt werden können und die Daten für die spätere AI-Analyse sowie Dashboard-Anzeige verfügbar sind
+**WHY:** Damit Test-Failures zentral gespeichert werden und die Daten für die spätere AI-Analyse sowie Dashboard-Anzeige verfügbar sind. Die reportId dient zur Gruppierung aller Failures eines Test-Runs.
 
 ## Akzeptanzkriterien (Confirmation)
 
 - Die Function validiert den API Key aus dem `x-api-key` Header durch SHA-256 Hashing und Firestore-Lookup
 - Die Function prüft, ob der API Key aktiv ist, nicht abgelaufen ist und die Scope `failures:write` besitzt
 - Die Function lädt den zugehörigen Tenant und prüft, ob die monatliche Quota (`failureQuota`) nicht überschritten wurde
-- **TestRun-Verwaltung:**
-  - Beim ersten Failure eines Runs wird ein neues `TestRun`-Dokument in Firestore erstellt (falls noch nicht vorhanden)
-  - Das TestRun-Dokument enthält alle Run-Metadaten (reportId, branch, commit, ciJobId, environment, startedAt)
-  - Bei weiteren Failures des gleichen Runs werden die TestRun-Statistiken aktualisiert (totalTests, failedTests)
 - Für jeden Failure im Request werden die zugehörigen Storage-Dateien (Screenshots, Traces, Videos) anhand der `testId` gesucht und verknüpft
 - Jeder Failure wird als neues Dokument in der Firestore Collection `failures` gespeichert mit allen relevanten Feldern (tenantId, reportId, media URLs, analysisStatus: "pending")
 - Nach erfolgreicher Speicherung werden die Nutzungsstatistiken aktualisiert: `apiKeys.lastUsedAt`, `apiKeys.usageCount` und `tenants.failureCount`

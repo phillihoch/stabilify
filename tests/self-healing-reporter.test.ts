@@ -905,4 +905,193 @@ describe("SelfHealingReporter", () => {
       });
     });
   });
+
+  describe("Test-Run Tracking", () => {
+    it("sollte reportId zu jedem Failure hinzufügen", () => {
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+      });
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+      testReporter.onTestEnd(
+        createMockTestCase(),
+        createMockTestResult("failed")
+      );
+
+      const failure = testReporter.getFailures()[0];
+      expect(failure.reportId).toBeDefined();
+      expect(failure.reportId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      );
+    });
+
+    it("sollte dieselbe reportId für alle Failures eines Test-Runs verwenden", () => {
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+      });
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      testReporter.onTestEnd(
+        createMockTestCase({ id: "test-1" }),
+        createMockTestResult("failed")
+      );
+      testReporter.onTestEnd(
+        createMockTestCase({ id: "test-2" }),
+        createMockTestResult("failed")
+      );
+
+      const failures = testReporter.getFailures();
+      expect(failures).toHaveLength(2);
+      expect(failures[0].reportId).toBe(failures[1].reportId);
+    });
+
+    it("sollte reportId und CI-Metadaten im Report speichern", async () => {
+      process.env.GITHUB_ACTIONS = "true";
+      process.env.GITHUB_REF = "refs/heads/main";
+      process.env.GITHUB_SHA = "abc123";
+
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+        outputFile: "test.json",
+      });
+      await testReporter.onEnd({ status: "passed" } as FullResult);
+
+      const call = vi.mocked(fs.writeFileSync).mock.calls[0];
+      const content = JSON.parse(call[1] as string);
+
+      expect(content.reportId).toBeDefined();
+      expect(content.ciMetadata).toBeDefined();
+      expect(content.ciMetadata.provider).toBe("github");
+      expect(content.ciMetadata.branch).toBe("main");
+      expect(content.ciMetadata.commit).toBe("abc123");
+    });
+
+    it("sollte Test-Statistiken im Report speichern", async () => {
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+        outputFile: "test.json",
+      });
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      // 2 passed, 1 failed, 1 skipped
+      testReporter.onTestEnd(
+        createMockTestCase({ id: "test-1" }),
+        createMockTestResult("passed")
+      );
+      testReporter.onTestEnd(
+        createMockTestCase({ id: "test-2" }),
+        createMockTestResult("passed")
+      );
+      testReporter.onTestEnd(
+        createMockTestCase({ id: "test-3" }),
+        createMockTestResult("failed")
+      );
+      testReporter.onTestEnd(
+        createMockTestCase({ id: "test-4" }),
+        createMockTestResult("skipped")
+      );
+
+      await testReporter.onEnd({ status: "failed" } as FullResult);
+
+      const call = vi.mocked(fs.writeFileSync).mock.calls[0];
+      const content = JSON.parse(call[1] as string);
+
+      expect(content.stats).toBeDefined();
+      expect(content.stats.totalTests).toBe(4);
+      expect(content.stats.passedTests).toBe(2);
+      expect(content.stats.failedTests).toBe(1);
+      expect(content.stats.skippedTests).toBe(1);
+    });
+  });
+
+  describe("Upload-Konfiguration", () => {
+    it("sollte Upload-Konfiguration akzeptieren", () => {
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+        upload: {
+          enabled: true,
+          apiKey: "test-api-key",
+          endpoint: "https://api.stabilify.dev",
+          retryAttempts: 3,
+          retryDelayMs: 1000,
+        },
+      });
+
+      expect(testReporter).toBeDefined();
+    });
+
+    it("sollte Upload deaktivieren wenn apiKey fehlt", () => {
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation();
+
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+        upload: {
+          enabled: true,
+          apiKey: "",
+        },
+      });
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("apiKey ist erforderlich")
+      );
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("sollte ungültige retryAttempts korrigieren", () => {
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation();
+
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+        upload: {
+          enabled: true,
+          apiKey: "test-key",
+          retryAttempts: -1,
+        },
+      });
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Ungültiger Wert für retryAttempts")
+      );
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("sollte ungültige retryDelayMs korrigieren", () => {
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation();
+
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+        upload: {
+          enabled: true,
+          apiKey: "test-key",
+          retryDelayMs: -500,
+        },
+      });
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Ungültiger Wert für retryDelayMs")
+      );
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("sollte ungültige endpoint URL korrigieren", () => {
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation();
+
+      const testReporter = new SelfHealingReporter({
+        configDir: "/test/project",
+        upload: {
+          enabled: true,
+          apiKey: "test-key",
+          endpoint: "not-a-valid-url",
+        },
+      });
+      testReporter.onBegin(createMockConfig(), {} as Suite);
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Ungültige URL für endpoint")
+      );
+      consoleWarnSpy.mockRestore();
+    });
+  });
 });

@@ -31,10 +31,11 @@ export default defineConfig({
 
 ### Reporter-Optionen
 
-| Option        | Typ                 | Beschreibung                                        |
-| ------------- | ------------------- | --------------------------------------------------- |
-| `outputFile`  | `string`            | Basis-Dateiname oder relativer Pfad für die Ausgabe |
-| `environment` | `ReportEnvironment` | Umgebungsinformationen für den Report (siehe unten) |
+| Option        | Typ                 | Beschreibung                                                |
+| ------------- | ------------------- | ----------------------------------------------------------- |
+| `outputFile`  | `string`            | Basis-Dateiname oder relativer Pfad für die Ausgabe         |
+| `environment` | `ReportEnvironment` | Umgebungsinformationen für den Report (siehe unten)         |
+| `upload`      | `UploadOptions`     | Upload-Konfiguration für automatischen Upload (siehe unten) |
 
 ### Environment-Optionen
 
@@ -83,6 +84,64 @@ Alle Environment-Felder sind optional:
 | `branchName`      | Git-Branch                        |
 | `commit`          | Git-Commit-Hash                   |
 | `testEnvironment` | Testumgebung (z.B. staging, prod) |
+
+### Upload-Optionen
+
+Du kannst den automatischen Upload von Test-Failures zum Stabilify-Server aktivieren:
+
+```typescript
+export default defineConfig({
+  reporter: [
+    ["list"],
+    [
+      "stabilify/reporter",
+      {
+        outputFile: "stabilify.json",
+        upload: {
+          enabled: true,
+          apiKey: process.env.STABILIFY_API_KEY, // Empfohlen: API-Key aus Umgebungsvariable
+          endpoint: "https://api.stabilify.dev", // Optional: Standard-Endpoint
+          retryAttempts: 3, // Optional: Anzahl der Wiederholungsversuche bei Fehlern
+          retryDelayMs: 1000, // Optional: Verzögerung zwischen Wiederholungsversuchen
+        },
+      },
+    ],
+  ],
+});
+```
+
+Upload-Felder:
+
+| Feld            | Typ       | Beschreibung                                                 | Default                         |
+| --------------- | --------- | ------------------------------------------------------------ | ------------------------------- |
+| `enabled`       | `boolean` | Upload aktivieren/deaktivieren                               | `false`                         |
+| `apiKey`        | `string`  | API-Key für Authentifizierung (erforderlich wenn enabled)    | `process.env.STABILIFY_API_KEY` |
+| `endpoint`      | `string`  | Server-Endpoint URL                                          | `https://api.stabilify.dev`     |
+| `retryAttempts` | `number`  | Anzahl der Wiederholungsversuche bei Upload-Fehlern          | `3`                             |
+| `retryDelayMs`  | `number`  | Verzögerung zwischen Wiederholungsversuchen in Millisekunden | `1000`                          |
+
+**Hinweis:** Der API-Key sollte aus Sicherheitsgründen immer über eine Umgebungsvariable (`STABILIFY_API_KEY`) bereitgestellt werden.
+
+#### Test-Run Tracking
+
+Wenn Upload aktiviert ist, wird automatisch ein Test-Run Tracking durchgeführt:
+
+- **Report ID**: Jeder Test-Run erhält eine eindeutige UUID (`reportId`), die alle Failures eines Runs gruppiert
+- **CI/CD Metadaten**: Automatische Erkennung von CI-Provider, Branch, Commit, Job-ID und Build-URL
+- **Test-Statistiken**: Anzahl der Tests (gesamt, bestanden, fehlgeschlagen, übersprungen)
+
+Unterstützte CI-Provider:
+
+- GitHub Actions (`github`)
+- GitLab CI (`gitlab`)
+- Jenkins (`jenkins`)
+- CircleCI (`circleci`)
+- Travis CI (`travis-ci`)
+- Azure Pipelines (`azure-pipelines`)
+- Bitbucket Pipelines (`bitbucket-pipelines`)
+- TeamCity (`teamcity`)
+
+Die CI-Metadaten werden automatisch aus den Umgebungsvariablen des jeweiligen CI-Systems extrahiert.
 
 ### Umgebungsvariablen
 
@@ -135,8 +194,23 @@ Der Reporter erstellt eine JSON-Datei mit folgendem Format:
 {
   "timestamp": "2025-12-09T11:00:00.000Z",
   "totalFailures": 1,
+  "reportId": "550e8400-e29b-41d4-a716-446655440000",
+  "ciMetadata": {
+    "provider": "github",
+    "branch": "main",
+    "commit": "abc123def456",
+    "jobId": "123456789",
+    "buildUrl": "https://github.com/owner/repo/actions/runs/123456789"
+  },
+  "stats": {
+    "total": 10,
+    "passed": 8,
+    "failed": 1,
+    "skipped": 1
+  },
   "failures": [
     {
+      "reportId": "550e8400-e29b-41d4-a716-446655440000",
       "testId": "abc123",
       "title": "tests › example.spec.ts › should work",
       "suite": "Login Tests > Authentication",
@@ -199,6 +273,7 @@ Der Reporter erstellt eine JSON-Datei mit folgendem Format:
 
 | Feld             | Typ       | Beschreibung                                              |
 | ---------------- | --------- | --------------------------------------------------------- |
+| `reportId`       | `string`  | UUID des Test-Runs (gruppiert alle Failures eines Runs)   |
 | `suite`          | `string`  | Hierarchischer Suite-Pfad (z.B. "Parent > Child")         |
 | `browser`        | `string`  | Browser-Name und Version                                  |
 | `flaky`          | `boolean` | `true` wenn Test nach Retries bestanden hat               |
@@ -207,6 +282,14 @@ Der Reporter erstellt eine JSON-Datei mit folgendem Format:
 | `steps[].status` | `string`  | Status jedes Steps (`passed` oder `failed`)               |
 | `steps[].error`  | `string`  | Fehlermeldung wenn Step fehlgeschlagen                    |
 | `environment`    | `object`  | Konfigurierte Umgebungsinformationen                      |
+
+### Test-Run Metadaten (Report-Ebene)
+
+| Feld         | Typ      | Beschreibung                                                  |
+| ------------ | -------- | ------------------------------------------------------------- |
+| `reportId`   | `string` | UUID des Test-Runs (gruppiert alle Failures)                  |
+| `ciMetadata` | `object` | CI/CD Metadaten (Provider, Branch, Commit, Job-ID, Build-URL) |
+| `stats`      | `object` | Test-Statistiken (total, passed, failed, skipped)             |
 
 ## Entwicklung
 

@@ -19,6 +19,7 @@ import type {
 } from "@playwright/test/reporter";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { TestRunTracker } from "./utils/test-run-tracker";
 
 /**
  * Environment-Informationen für den Report
@@ -54,6 +55,22 @@ export interface ReportEnvironment {
 }
 
 /**
+ * Upload-Konfiguration für den automatischen Upload von Failures an den Stabilify-Server
+ */
+export interface UploadOptions {
+  /** Aktiviert/deaktiviert den Upload */
+  enabled: boolean;
+  /** API-Schlüssel für die Authentifizierung (kann aus Umgebungsvariable gelesen werden) */
+  apiKey: string;
+  /** Server-URL (Standard: https://api.stabilify.dev) */
+  endpoint?: string;
+  /** Anzahl der Wiederholungsversuche bei Fehlern (Standard: 3) */
+  retryAttempts?: number;
+  /** Verzögerung zwischen Wiederholungen in Millisekunden (Standard: 1000) */
+  retryDelayMs?: number;
+}
+
+/**
  * Konfigurationsoptionen für den Self-Healing Reporter
  *
  * Unterstützt folgende Umgebungsvariablen (analog zum Playwright JSON Reporter):
@@ -63,6 +80,7 @@ export interface ReportEnvironment {
  * | STABILIFY_OUTPUT_DIR        | -             | Verzeichnis für die Ausgabe. Ignoriert wenn OUTPUT_FILE gesetzt |
  * | STABILIFY_OUTPUT_NAME       | outputFile    | Basis-Dateiname, relativ zum Output-Verzeichnis                 |
  * | STABILIFY_OUTPUT_FILE       | outputFile    | Vollständiger Pfad. Überschreibt OUTPUT_DIR und OUTPUT_NAME     |
+ * | STABILIFY_API_KEY           | upload.apiKey | API-Schlüssel für den Upload                                    |
  *
  * Environment-Informationen können entweder als verschachteltes Objekt oder flach übergeben werden:
  *
@@ -72,6 +90,18 @@ export interface ReportEnvironment {
  *
  * // Flach (einfacher):
  * ["stabilify/reporter", { appName: "MyApp", appVersion: "1.0.0" }]
+ *
+ * @example
+ * // Mit Upload-Konfiguration:
+ * ["stabilify/reporter", {
+ *   upload: {
+ *     enabled: true,
+ *     apiKey: process.env.STABILIFY_API_KEY,
+ *     endpoint: "https://api.stabilify.dev",
+ *     retryAttempts: 3,
+ *     retryDelayMs: 1000
+ *   }
+ * }]
  */
 export interface SelfHealingReporterOptions extends Partial<ReportEnvironment> {
   /** Basis-Dateiname oder relativer Pfad für die Ausgabe. Kann auch über STABILIFY_OUTPUT_NAME gesetzt werden. */
@@ -80,6 +110,8 @@ export interface SelfHealingReporterOptions extends Partial<ReportEnvironment> {
   configDir?: string;
   /** Environment-Informationen für den Report (alternativ können die Felder auch direkt übergeben werden) */
   environment?: ReportEnvironment;
+  /** Upload-Konfiguration für automatischen Upload an Stabilify-Server */
+  upload?: UploadOptions;
 }
 
 /**
@@ -125,6 +157,8 @@ export interface RetryAttempt {
  */
 export interface CollectedFailure {
   // === Basis-Identifikation ===
+  /** Report ID zur Gruppierung aller Failures eines Test-Runs (UUID) */
+  reportId: string;
   /** Eindeutige Test-ID */
   testId: string;
   /** Vollständiger Titel-Pfad des Tests */
@@ -218,6 +252,9 @@ class SelfHealingReporter implements Reporter {
   /** Konsolidierte Environment-Informationen */
   private readonly environment: ReportEnvironment;
 
+  /** Test-Run Tracker für Metadaten und Statistiken */
+  private readonly testRunTracker: TestRunTracker;
+
   /**
    * Erstellt eine neue Reporter-Instanz.
    *
@@ -227,6 +264,7 @@ class SelfHealingReporter implements Reporter {
     this.options = options;
     this.configDir = options.configDir ?? process.cwd();
     this.environment = this.buildEnvironment(options);
+    this.testRunTracker = new TestRunTracker();
   }
 
   /**
@@ -327,18 +365,105 @@ class SelfHealingReporter implements Reporter {
   }
 
   /**
+   * Validiert die Upload-Konfiguration
+   */
+  private validateUploadConfig(): void {
+    const upload = this.options.upload;
+
+    if (!upload) {
+      return;
+    }
+
+    // API-Key ist erforderlich wenn Upload aktiviert ist
+    if (upload.enabled && !upload.apiKey) {
+      console.error(
+        "[stabilify] ❌ Upload-Konfiguration ungültig: apiKey ist erforderlich wenn enabled=true"
+      );
+      console.error(
+        "[stabilify] Tipp: Setze STABILIFY_API_KEY Umgebungsvariable oder übergebe apiKey in der Konfiguration"
+      );
+      console.error("[stabilify] Upload wird deaktiviert.");
+      upload.enabled = false;
+      return;
+    }
+
+    // Validiere retryAttempts
+    if (
+      upload.retryAttempts !== undefined &&
+      (upload.retryAttempts < 0 || !Number.isInteger(upload.retryAttempts))
+    ) {
+      console.warn(
+        `[stabilify] ⚠️  Ungültiger Wert für retryAttempts: ${upload.retryAttempts}. Verwende Standard: 3`
+      );
+      upload.retryAttempts = 3;
+    }
+
+    // Validiere retryDelayMs
+    if (
+      upload.retryDelayMs !== undefined &&
+      (upload.retryDelayMs < 0 || !Number.isInteger(upload.retryDelayMs))
+    ) {
+      console.warn(
+        `[stabilify] ⚠️  Ungültiger Wert für retryDelayMs: ${upload.retryDelayMs}. Verwende Standard: 1000`
+      );
+      upload.retryDelayMs = 1000;
+    }
+
+    // Validiere endpoint
+    if (upload.endpoint) {
+      try {
+        new URL(upload.endpoint);
+      } catch {
+        console.warn(
+          `[stabilify] ⚠️  Ungültige URL für endpoint: ${upload.endpoint}. Verwende Standard: https://api.stabilify.dev`
+        );
+        upload.endpoint = "https://api.stabilify.dev";
+      }
+    }
+
+    console.log("[stabilify] ✅ Upload-Konfiguration validiert");
+    console.log(
+      "[stabilify] Endpoint:",
+      upload.endpoint || "https://api.stabilify.dev"
+    );
+    console.log("[stabilify] Retry-Versuche:", upload.retryAttempts ?? 3);
+  }
+
+  /**
    * Wird aufgerufen, wenn die Testsuite beginnt.
    *
    * @param _config - Playwright Konfiguration (nicht verwendet)
    * @param _suite - Root-Suite mit allen Tests (nicht verwendet)
    */
   onBegin(_config: FullConfig, _suite: Suite): void {
+    const testRunInfo = this.testRunTracker.getTestRunInfo();
+
     console.log("[stabilify] Reporter gestartet");
+    console.log("[stabilify] Report ID:", testRunInfo.reportId);
     console.log("[stabilify] configDir:", this.configDir);
     console.log(
       "[stabilify] Output wird geschrieben nach:",
       this.resolveOutputPath()
     );
+
+    // CI/CD Metadaten loggen wenn vorhanden
+    if (testRunInfo.ciMetadata.provider) {
+      console.log("[stabilify] CI Provider:", testRunInfo.ciMetadata.provider);
+      if (testRunInfo.ciMetadata.branch) {
+        console.log("[stabilify] Branch:", testRunInfo.ciMetadata.branch);
+      }
+      if (testRunInfo.ciMetadata.commit) {
+        console.log(
+          "[stabilify] Commit:",
+          testRunInfo.ciMetadata.commit.substring(0, 8)
+        );
+      }
+    }
+
+    // Upload-Konfiguration validieren wenn aktiviert
+    if (this.options.upload?.enabled) {
+      this.validateUploadConfig();
+    }
   }
 
   /**
@@ -352,6 +477,9 @@ class SelfHealingReporter implements Reporter {
     console.log(
       `[stabilify] Test beendet: ${test.title} - Status: ${result.status}`
     );
+
+    // Test-Statistiken aktualisieren
+    this.testRunTracker.recordTestResult(result.status);
 
     // Nur bei Fehlern sammeln
     if (result.status === "passed" || result.status === "skipped") {
@@ -372,6 +500,7 @@ class SelfHealingReporter implements Reporter {
     console.log(
       `[stabilify] Testsuite beendet. ${this.failures.length} Fehler gesammelt.`
     );
+    console.log(`[stabilify] ${this.testRunTracker.getSummary()}`);
     await this.writeReport();
   }
 
@@ -411,6 +540,7 @@ class SelfHealingReporter implements Reporter {
 
     const failure: CollectedFailure = {
       // Basis-Identifikation
+      reportId: this.testRunTracker.getReportId(),
       testId: test.id,
       title: test.titlePath().join(" › "),
       file: test.location.file,
@@ -634,9 +764,15 @@ class SelfHealingReporter implements Reporter {
     // Environment nur hinzufügen wenn es nicht leer ist
     const hasEnvironment = Object.keys(this.environment).length > 0;
 
+    // Test-Run Informationen
+    const testRunInfo = this.testRunTracker.getTestRunInfo();
+
     const report = {
       timestamp: new Date().toISOString(),
+      reportId: testRunInfo.reportId,
       ...(hasEnvironment && { environment: this.environment }),
+      ciMetadata: testRunInfo.ciMetadata,
+      stats: testRunInfo.stats,
       totalFailures: this.failures.length,
       failures: this.failures,
     };
