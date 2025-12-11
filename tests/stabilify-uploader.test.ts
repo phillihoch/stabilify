@@ -5,8 +5,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CollectedFailure } from "../src/self-healing-reporter";
+import type { FileToUpload } from "../src/uploader/stabilify-uploader";
 import { StabilifyUploader } from "../src/uploader/stabilify-uploader";
 
 describe("StabilifyUploader.collectFilesToUpload()", () => {
@@ -191,6 +192,312 @@ describe("StabilifyUploader.collectFilesToUpload()", () => {
 
     const test5cFiles = result.filter((f) => f.testId === "test-5c");
     expect(test5cFiles).toHaveLength(0); // keine Dateien
+  });
+});
+
+describe("StabilifyUploader.getUploadUrls()", () => {
+  let uploader: StabilifyUploader;
+  const mockApiKey = "sk_test_123456";
+  const mockEndpoint = "https://api.test.stabilify.dev";
+
+  beforeEach(() => {
+    uploader = new StabilifyUploader({
+      apiKey: mockApiKey,
+      endpoint: mockEndpoint,
+    });
+
+    // Mock fetch global
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sollte signierte URLs vom Server anfordern und zurückgeben", async () => {
+    const files: FileToUpload[] = [
+      {
+        testId: "test-1",
+        localPath: "/path/to/screenshot.png",
+        fileName: "screenshot.png",
+        contentType: "image/png",
+        fileType: "screenshot",
+      },
+      {
+        testId: "test-1",
+        localPath: "/path/to/trace.zip",
+        fileName: "trace.zip",
+        contentType: "application/zip",
+        fileType: "trace",
+      },
+    ];
+
+    const mockResponse = {
+      success: true,
+      tenantId: "tenant-123",
+      uploadUrls: [
+        {
+          testId: "test-1",
+          fileName: "screenshot.png",
+          uploadUrl: "https://storage.googleapis.com/signed-url-1",
+          destination: "gs://bucket/tenant-123/test-1/screenshot.png",
+        },
+        {
+          testId: "test-1",
+          fileName: "trace.zip",
+          uploadUrl: "https://storage.googleapis.com/signed-url-2",
+          destination: "gs://bucket/tenant-123/test-1/trace.zip",
+        },
+      ],
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    };
+
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    });
+
+    const result = await uploader.getUploadUrls(files);
+
+    expect(result).toEqual(mockResponse);
+    expect(globalThis.fetch).toHaveBeenCalledWith(`${mockEndpoint}/getUploadUrls`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": mockApiKey,
+      },
+      body: JSON.stringify({
+        files: [
+          {
+            testId: "test-1",
+            fileName: "screenshot.png",
+            contentType: "image/png",
+            fileType: "screenshot",
+          },
+          {
+            testId: "test-1",
+            fileName: "trace.zip",
+            contentType: "application/zip",
+            fileType: "trace",
+          },
+        ],
+      }),
+    });
+  });
+
+  it("sollte einen Fehler werfen bei HTTP-Fehler", async () => {
+    const files: FileToUpload[] = [
+      {
+        testId: "test-1",
+        localPath: "/path/to/screenshot.png",
+        fileName: "screenshot.png",
+        contentType: "image/png",
+        fileType: "screenshot",
+      },
+    ];
+
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => "Unauthorized",
+    });
+
+    await expect(uploader.getUploadUrls(files)).rejects.toThrow(
+      "Failed to get upload URLs (401): Unauthorized"
+    );
+  });
+
+  it("sollte einen Fehler werfen bei ungültiger Response", async () => {
+    const files: FileToUpload[] = [
+      {
+        testId: "test-1",
+        localPath: "/path/to/screenshot.png",
+        fileName: "screenshot.png",
+        contentType: "image/png",
+        fileType: "screenshot",
+      },
+    ];
+
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: false }), // Ungültige Response
+    });
+
+    await expect(uploader.getUploadUrls(files)).rejects.toThrow(
+      "Invalid response from getUploadUrls endpoint"
+    );
+  });
+});
+
+describe("StabilifyUploader.uploadFiles()", () => {
+  let uploader: StabilifyUploader;
+  let tempDir: string;
+  let testFile: string;
+
+  beforeEach(() => {
+    uploader = new StabilifyUploader({
+      apiKey: "test-api-key",
+      endpoint: "https://test.example.com",
+    });
+
+    // Temporäres Verzeichnis und Testdatei erstellen
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stabilify-upload-test-"));
+    testFile = path.join(tempDir, "test-screenshot.png");
+    fs.writeFileSync(testFile, "fake-png-data");
+
+    // Mock fetch global
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+
+    // Temporäres Verzeichnis aufräumen
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sollte Dateien erfolgreich hochladen", async () => {
+    const files: FileToUpload[] = [
+      {
+        testId: "test-1",
+        localPath: testFile,
+        fileName: "test-screenshot.png",
+        contentType: "image/png",
+        fileType: "screenshot",
+      },
+    ];
+
+    const uploadUrls = [
+      {
+        testId: "test-1",
+        fileName: "test-screenshot.png",
+        uploadUrl: "https://storage.googleapis.com/signed-url",
+        destination: "gs://bucket/tenant/test-1/test-screenshot.png",
+      },
+    ];
+
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+    });
+
+    const successCount = await uploader.uploadFiles(files, uploadUrls);
+
+    expect(successCount).toBe(1);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://storage.googleapis.com/signed-url",
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "image/png",
+        },
+        body: expect.any(Buffer),
+      }
+    );
+  });
+
+  it("sollte nicht existierende Dateien überspringen", async () => {
+    const files: FileToUpload[] = [
+      {
+        testId: "test-1",
+        localPath: "/non/existent/file.png",
+        fileName: "file.png",
+        contentType: "image/png",
+        fileType: "screenshot",
+      },
+    ];
+
+    const uploadUrls = [
+      {
+        testId: "test-1",
+        fileName: "file.png",
+        uploadUrl: "https://storage.googleapis.com/signed-url",
+        destination: "gs://bucket/tenant/test-1/file.png",
+      },
+    ];
+
+    const successCount = await uploader.uploadFiles(files, uploadUrls);
+
+    expect(successCount).toBe(0);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("sollte Fehler beim Upload loggen und fortfahren", async () => {
+    const files: FileToUpload[] = [
+      {
+        testId: "test-1",
+        localPath: testFile,
+        fileName: "test-screenshot.png",
+        contentType: "image/png",
+        fileType: "screenshot",
+      },
+    ];
+
+    const uploadUrls = [
+      {
+        testId: "test-1",
+        fileName: "test-screenshot.png",
+        uploadUrl: "https://storage.googleapis.com/signed-url",
+        destination: "gs://bucket/tenant/test-1/test-screenshot.png",
+      },
+    ];
+
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      text: async () => "Forbidden",
+    });
+
+    const successCount = await uploader.uploadFiles(files, uploadUrls);
+
+    expect(successCount).toBe(0);
+  });
+
+  it("sollte mehrere Dateien parallel hochladen", async () => {
+    const testFile2 = path.join(tempDir, "test-trace.zip");
+    fs.writeFileSync(testFile2, "fake-zip-data");
+
+    const files: FileToUpload[] = [
+      {
+        testId: "test-1",
+        localPath: testFile,
+        fileName: "test-screenshot.png",
+        contentType: "image/png",
+        fileType: "screenshot",
+      },
+      {
+        testId: "test-1",
+        localPath: testFile2,
+        fileName: "test-trace.zip",
+        contentType: "application/zip",
+        fileType: "trace",
+      },
+    ];
+
+    const uploadUrls = [
+      {
+        testId: "test-1",
+        fileName: "test-screenshot.png",
+        uploadUrl: "https://storage.googleapis.com/signed-url-1",
+        destination: "gs://bucket/tenant/test-1/test-screenshot.png",
+      },
+      {
+        testId: "test-1",
+        fileName: "test-trace.zip",
+        uploadUrl: "https://storage.googleapis.com/signed-url-2",
+        destination: "gs://bucket/tenant/test-1/test-trace.zip",
+      },
+    ];
+
+    (globalThis.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true });
+
+    const successCount = await uploader.uploadFiles(files, uploadUrls);
+
+    expect(successCount).toBe(2);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 });
 

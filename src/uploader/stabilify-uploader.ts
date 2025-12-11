@@ -33,6 +33,51 @@ export interface FileToUpload {
 }
 
 /**
+ * Request-Body für getUploadUrls Endpoint.
+ */
+export interface GetUploadUrlsRequest {
+  /** Array von Dateien, für die signierte URLs angefordert werden */
+  files: Array<{
+    /** Test-ID zur Zuordnung */
+    testId: string;
+    /** Dateiname (z.B. "screenshot-1.png") */
+    fileName: string;
+    /** MIME-Type (z.B. "image/png") */
+    contentType: string;
+    /** Art der Datei */
+    fileType: FileType;
+  }>;
+}
+
+/**
+ * Informationen über eine signierte Upload-URL.
+ */
+export interface UploadUrlInfo {
+  /** Test-ID zur Zuordnung */
+  testId: string;
+  /** Dateiname */
+  fileName: string;
+  /** Signierte PUT-URL (15 Min gültig) */
+  uploadUrl: string;
+  /** Ziel-Pfad im Storage (gs://bucket/path) */
+  destination: string;
+}
+
+/**
+ * Response-Body vom getUploadUrls Endpoint.
+ */
+export interface GetUploadUrlsResponse {
+  /** Erfolgs-Flag */
+  success: boolean;
+  /** Tenant-ID für Client-Referenz */
+  tenantId: string;
+  /** Array von signierten Upload-URLs */
+  uploadUrls: UploadUrlInfo[];
+  /** Ablaufzeitpunkt der URLs (ISO Timestamp) */
+  expiresAt: string;
+}
+
+/**
  * Konfigurationsoptionen für den StabilifyUploader.
  */
 export interface UploaderOptions {
@@ -138,5 +183,157 @@ export class StabilifyUploader {
 
     return files;
   }
-}
 
+  /**
+   * Fordert signierte Upload-URLs vom Server an.
+   *
+   * Sendet einen POST-Request an den /getUploadUrls Endpoint mit dem API-Key
+   * im Header und erhält signierte URLs für alle Dateien.
+   *
+   * @param files - Array von FileToUpload-Objekten
+   * @returns Promise mit GetUploadUrlsResponse (tenantId und uploadUrls)
+   * @throws Error wenn der Request fehlschlägt oder der API-Key ungültig ist
+   */
+  async getUploadUrls(files: FileToUpload[]): Promise<GetUploadUrlsResponse> {
+    // Request-Body vorbereiten
+    const requestBody: GetUploadUrlsRequest = {
+      files: files.map((file) => ({
+        testId: file.testId,
+        fileName: file.fileName,
+        contentType: file.contentType,
+        fileType: file.fileType,
+      })),
+    };
+
+    // HTTP POST Request an /getUploadUrls
+    const url = `${this.endpoint}/getUploadUrls`;
+    console.log(
+      `[stabilify] Requesting upload URLs for ${files.length} files...`
+    );
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.apiKey,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      // Fehlerbehandlung
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to get upload URLs (${response.status}): ${errorText}`
+        );
+      }
+
+      // Response parsen
+      const data = (await response.json()) as GetUploadUrlsResponse;
+
+      // Validierung
+      if (!data.success || !data.uploadUrls || !data.tenantId) {
+        throw new Error("Invalid response from getUploadUrls endpoint");
+      }
+
+      console.log(
+        `[stabilify] Received ${data.uploadUrls.length} upload URLs for tenant: ${data.tenantId}`
+      );
+      console.log(`[stabilify] URLs expire at: ${data.expiresAt}`);
+
+      return data;
+    } catch (error) {
+      // Fehler loggen und weiterwerfen
+      console.error("[stabilify] Failed to get upload URLs:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Lädt alle Dateien parallel mit den signierten URLs hoch.
+   *
+   * Führt für jede Datei einen PUT-Request mit der signierten URL durch.
+   * Alle Uploads erfolgen parallel mit Promise.all().
+   * Nicht existierende Dateien werden übersprungen und geloggt.
+   *
+   * @param files - Array von FileToUpload-Objekten
+   * @param uploadUrls - Array von UploadUrlInfo-Objekten vom Server
+   * @returns Promise mit der Anzahl erfolgreich hochgeladener Dateien
+   */
+  async uploadFiles(
+    files: FileToUpload[],
+    uploadUrls: UploadUrlInfo[]
+  ): Promise<number> {
+    console.log(`[stabilify] Starting upload of ${files.length} files...`);
+
+    // Map erstellen für schnellen Zugriff auf Upload-URLs
+    const urlMap = new Map<string, UploadUrlInfo>();
+    for (const urlInfo of uploadUrls) {
+      const key = `${urlInfo.testId}:${urlInfo.fileName}`;
+      urlMap.set(key, urlInfo);
+    }
+
+    // Upload-Promises sammeln
+    const uploadPromises = files.map(async (file) => {
+      const key = `${file.testId}:${file.fileName}`;
+      const urlInfo = urlMap.get(key);
+
+      if (!urlInfo) {
+        console.warn(
+          `[stabilify] No upload URL found for ${file.fileName} (test: ${file.testId})`
+        );
+        return false;
+      }
+
+      // Prüfe ob Datei existiert (sollte bereits in collectFilesToUpload geprüft sein)
+      if (!fs.existsSync(file.localPath)) {
+        console.warn(`[stabilify] File not found, skipping: ${file.localPath}`);
+        return false;
+      }
+
+      try {
+        // Datei lesen
+        const fileBuffer = fs.readFileSync(file.localPath);
+
+        // PUT-Request mit signierter URL
+        const response = await fetch(urlInfo.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.contentType,
+          },
+          body: fileBuffer,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            `[stabilify] Failed to upload ${file.fileName}: ${response.status} ${errorText}`
+          );
+          return false;
+        }
+
+        console.log(
+          `[stabilify] ✓ Uploaded ${file.fileName} (${file.fileType}) for test ${file.testId}`
+        );
+        return true;
+      } catch (error) {
+        console.error(`[stabilify] Error uploading ${file.fileName}:`, error);
+        return false;
+      }
+    });
+
+    // Alle Uploads parallel ausführen
+    const results = await Promise.all(uploadPromises);
+
+    // Erfolgreiche Uploads zählen
+    const successCount = results.filter(Boolean).length;
+    const failedCount = results.length - successCount;
+
+    console.log(
+      `[stabilify] Upload complete: ${successCount} successful, ${failedCount} failed`
+    );
+
+    return successCount;
+  }
+}
