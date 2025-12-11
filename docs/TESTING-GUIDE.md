@@ -13,16 +13,47 @@ cd /Users/philipphoch/Documents/git-projects/stabilify-server
 npm run deploy
 ```
 
-Dies deployed die beiden Endpoints:
+Dies deployed die Endpoints:
 
-- `https://europe-west3-stabilify-dev.cloudfunctions.net/getUploadUrls`
-- `https://europe-west3-stabilify-dev.cloudfunctions.net/submitFailure`
+- `https://getuploadurls-euownvpvfa-ey.a.run.app` - Upload-URLs generieren
+- `https://submitfailure-euownvpvfa-ey.a.run.app` - Failures speichern
+- `https://createtestdata-euownvpvfa-ey.a.run.app` - Test-Daten generieren
 
-### 2. Tenant und API Key in Firestore anlegen
+### 2. Tenant und API Key generieren
 
-Du musst einen Tenant und einen API Key in Firestore erstellen. Nutze dafür die Utility-Funktionen:
+Du hast drei Möglichkeiten, Test-Daten zu erstellen:
 
-#### Option A: Über Firebase Console (manuell)
+#### Option A: Über HTTP Request (empfohlen - am einfachsten!)
+
+Rufe einfach die `createTestData` Function auf:
+
+```bash
+curl -X POST https://createtestdata-euownvpvfa-ey.a.run.app
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "tenant": {
+    "id": "test-tenant-1234567890",
+    "name": "Test Tenant",
+    "plan": "free"
+  },
+  "apiKey": {
+    "key": "sk_test_abc123...",
+    "keyPrefix": "sk_test_abc123",
+    "scopes": ["storage:write", "failures:write"],
+    "environment": "test"
+  },
+  "warning": "⚠️  WICHTIG: Speichere den API Key sicher! Er wird nur einmal angezeigt."
+}
+```
+
+**⚠️ Wichtig:** Speichere den `apiKey.key` Wert! Du brauchst ihn für die Reporter-Konfiguration.
+
+#### Option B: Über Firebase Console (manuell)
 
 1. Öffne die [Firebase Console](https://console.firebase.google.com/)
 2. Wähle dein Projekt: `stabilify-dev`
@@ -68,7 +99,7 @@ Du musst einen Tenant und einen API Key in Firestore erstellen. Nutze dafür die
 
 **Wichtig:** Du musst den API Key selbst generieren und hashen. Nutze dafür die Utility-Funktionen aus dem Server-Projekt.
 
-#### Option B: Über Node.js Script (empfohlen)
+#### Option C: Über Node.js Script
 
 Erstelle ein Script im stabilify-server Projekt:
 
@@ -162,7 +193,6 @@ export default defineConfig({
         upload: {
           enabled: true,
           apiKey: "sk_test_DEIN_API_KEY_HIER", // ← Ersetze mit deinem API Key
-          endpoint: "https://europe-west3-stabilify-dev.cloudfunctions.net",
         },
       },
     ],
@@ -176,6 +206,8 @@ export default defineConfig({
   },
 });
 ```
+
+**Hinweis:** Die Endpoints sind fest konfiguriert und müssen nicht angegeben werden.
 
 ### 2. Umgebungsvariable (Alternative)
 
