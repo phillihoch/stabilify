@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"name": "stabilify",
+			"path": "."
+		},
+		{
+			"name": "stabilify-server",
+			"path": "../stabilify-server"
+		}
+	],
+	"settings": {}
+}
+
