@@ -113,7 +113,65 @@ interface Tenant {
 }
 ```
 
-### 3.2 Collection: `apiKeys`
+### 3.2 Collection: `testRuns`
+
+Test-Run Tracking für Gruppierung und Metadaten.
+
+```mermaid
+erDiagram
+    TEST_RUN {
+        string id PK "reportId (UUID)"
+        string tenantId FK "Referenz zu Tenant"
+        string branch "Git Branch"
+        string commit "Git Commit Hash"
+        string ciJobId "CI Job ID"
+        int totalTests "Anzahl Tests"
+        int failedTests "Fehlgeschlagene Tests"
+        int passedTests "Erfolgreiche Tests"
+        timestamp startedAt
+        timestamp completedAt
+        string status "running | completed | failed"
+    }
+
+    TENANT ||--o{ TEST_RUN : "has many"
+```
+
+```typescript
+interface TestRun {
+  id: string; // reportId (UUID, vom Reporter generiert)
+  tenantId: string; // Referenz zum Tenant
+
+  // CI/CD Context
+  branch?: string; // Git Branch (z.B. "main", "feature/xyz")
+  commit?: string; // Git Commit Hash
+  ciJobId?: string; // CI Job ID (z.B. GitHub Actions Run ID)
+  ciProvider?: "github" | "gitlab" | "jenkins" | "circleci" | "other";
+  ciUrl?: string; // Link zum CI-Job
+
+  // Statistiken
+  totalTests: number; // Gesamtanzahl Tests
+  failedTests: number; // Anzahl fehlgeschlagener Tests
+  passedTests: number; // Anzahl erfolgreicher Tests
+  skippedTests: number; // Anzahl übersprungener Tests
+
+  // Timing
+  startedAt: Timestamp; // Wann der Test-Run gestartet wurde
+  completedAt?: Timestamp; // Wann der Test-Run beendet wurde
+  duration?: number; // Dauer in Millisekunden
+
+  // Status
+  status: "running" | "completed" | "failed" | "cancelled";
+
+  // Environment
+  environment: ReportEnvironment; // OS, Browser, etc.
+
+  // Metadata
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+### 3.3 Collection: `apiKeys`
 
 API Keys für Authentifizierung - **gehashte Speicherung**.
 
@@ -178,13 +236,29 @@ sk_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
 └────────── Prefix "sk" = Secret Key
 ```
 
-### 3.3 Collection: `failures`
+### 3.4 Collection: `failures`
+
+```mermaid
+erDiagram
+    FAILURE {
+        string id PK "Auto-generated"
+        string tenantId FK "Referenz zu Tenant"
+        string reportId FK "Referenz zu TestRun"
+        string testId "Test-ID"
+        string title "Test-Titel"
+        string status "failed | timedOut | interrupted"
+        timestamp createdAt
+    }
+
+    TEST_RUN ||--o{ FAILURE : "has many"
+    TENANT ||--o{ FAILURE : "has many"
+```
 
 ```typescript
 interface Failure {
   id: string; // Auto-generated
   tenantId: string; // Aus API Key ermittelt
-  reportId: string; // Gruppierung pro Test-Run
+  reportId: string; // Referenz zum TestRun (UUID)
 
   // Original CollectedFailure Daten
   testId: string;
@@ -229,7 +303,7 @@ interface Failure {
 }
 ```
 
-### 3.4 Collection: `solutions`
+### 3.5 Collection: `solutions`
 
 ```typescript
 interface Solution {
