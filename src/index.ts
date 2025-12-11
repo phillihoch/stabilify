@@ -14,6 +14,14 @@ export {
   type UploadOptions,
 } from "./self-healing-reporter";
 
+// Uploader Export
+export {
+  StabilifyUploader,
+  type FileToUpload,
+  type FileType,
+  type UploaderOptions,
+} from "./uploader/stabilify-uploader";
+
 // Firestore Types Export
 export {
   type AiModel,
