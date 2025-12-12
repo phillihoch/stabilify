@@ -43,7 +43,7 @@ export default [
   },
   // Reporter separate build (für Playwright reporter Array)
   {
-    input: "src/self-healing-reporter.ts",
+    input: "src/reporter/stabilify-reporter.ts",
     output: [
       {
         file: "dist/reporter.js",
@@ -55,6 +55,7 @@ export default [
         file: "dist/reporter.mjs",
         format: "esm",
         sourcemap: true,
+        exports: "named",
       },
     ],
     external,
@@ -72,7 +73,7 @@ export default [
   },
   // TypeScript declarations - reporter
   {
-    input: "src/self-healing-reporter.ts",
+    input: "src/reporter/stabilify-reporter.ts",
     output: {
       file: "dist/reporter.d.ts",
       format: "esm",

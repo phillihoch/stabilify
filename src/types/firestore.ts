@@ -7,14 +7,18 @@
  * Collections:
  * - tenants: Mandanten-Verwaltung für SaaS Multi-Tenancy
  * - apiKeys: API Keys für Authentifizierung (gehashte Speicherung)
- * - failures: Fehlgeschlagene Tests mit Details und Medien (reportId zur Gruppierung)
+ * - testRuns: Vollständige Test-Reports (CTRF + Stabilify Extensions)
  * - solutions: AI-generierte Lösungsvorschläge
  *
  * @module types/firestore
  */
 
 import type { Timestamp } from "firebase/firestore";
-import type { ReportEnvironment } from "../self-healing-reporter";
+import type { AiModel, TenantPlan } from "./shared";
+import type { StabilifyTestReport } from "./stabilify-report";
+
+// Re-Export für Bequemlichkeit
+export type { AiModel, CiProvider, TenantPlan } from "./shared";
 
 // ============================================================================
 // ENUMS
@@ -25,40 +29,14 @@ import type { ReportEnvironment } from "../self-healing-reporter";
  * Definiert die granularen Zugriffsrechte, die einem API Key zugewiesen werden können.
  */
 export type ApiKeyScope =
-  /** Berechtigung zum Hochladen von Failures */
-  | "failures:write"
-  /** Berechtigung zum Lesen von Failures */
-  | "failures:read"
+  /** Berechtigung zum Hochladen von Test-Runs */
+  | "test_runs:write"
+  /** Berechtigung zum Lesen von Test-Runs */
+  | "test_runs:read"
   /** Berechtigung zum Lesen von Solutions */
   | "solutions:read"
   /** Berechtigung zum Hochladen von Dateien (Screenshots, Traces, Videos) */
   | "storage:write";
-
-/**
- * Status eines Failures.
- * Beschreibt die Art des Testfehlers.
- */
-export type FailureStatus =
-  /** Test ist fehlgeschlagen */
-  | "failed"
-  /** Test wurde wegen Timeout abgebrochen */
-  | "timedOut"
-  /** Test wurde unterbrochen */
-  | "interrupted";
-
-/**
- * Analyse-Status eines Failures.
- * Beschreibt den Fortschritt der AI-Analyse.
- */
-export type FailureAnalysisStatus =
-  /** Wartet auf Analyse */
-  | "pending"
-  /** Wird gerade analysiert */
-  | "analyzing"
-  /** Analyse abgeschlossen */
-  | "completed"
-  /** Analyse fehlgeschlagen */
-  | "failed";
 
 /**
  * Kategorien für Fehlerursachen.
@@ -90,29 +68,6 @@ export type SolutionStrategyType =
   /** Manuelle Überprüfung erforderlich */
   | "manual_review";
 
-/**
- * Unterstützte CI/CD Provider.
- */
-export type CiProvider =
-  | "github" // GitHub Actions
-  | "gitlab" // GitLab CI
-  | "jenkins"
-  | "circleci"
-  | "travis-ci"
-  | "azure-pipelines"
-  | "bitbucket-pipelines"
-  | "teamcity";
-
-/**
- * Verfügbare Tarif-Pläne.
- */
-export type TenantPlan = "free" | "pro" | "enterprise";
-
-/**
- * Unterstützte AI-Modelle für die Fehleranalyse.
- */
-export type AiModel = "gpt-4o" | "gemini-1.5-pro";
-
 // ============================================================================
 // INTERFACES - Tenant
 // ============================================================================
@@ -126,7 +81,7 @@ export interface TenantSettings {
   defaultAiModel: AiModel;
   /** Optional: Callback-URL für neue Solutions */
   webhookNotifyUrl?: string;
-  /** Aufbewahrungsdauer für Failures in Tagen (default: 30) */
+  /** Aufbewahrungsdauer für Test-Runs in Tagen (default: 30) */
   retentionDays: number;
 }
 
@@ -220,155 +175,50 @@ export interface ApiKey {
 }
 
 // ============================================================================
-// INTERFACES - Failure (Sub-Interfaces)
+// INTERFACES - TestRun
 // ============================================================================
 
 /**
- * Position im Quellcode.
+ * Analyse-Status eines Test-Runs.
+ * Beschreibt den Fortschritt der AI-Analyse für enthaltene Failures.
  */
-export interface SourceLocation {
-  /** Zeilennummer */
-  line: number;
-  /** Spaltennummer */
-  column: number;
-}
+export type AnalysisStatus =
+  /** Wartet auf Analyse */
+  | "pending"
+  /** Wird gerade analysiert */
+  | "analyzing"
+  /** Analyse abgeschlossen */
+  | "completed"
+  /** Analyse fehlgeschlagen */
+  | "failed"
+  /** Keine Analyse erforderlich (keine Failures) */
+  | "skipped";
 
 /**
- * Erweiterte Position mit Dateipfad.
- */
-export interface FileLocation extends SourceLocation {
-  /** Pfad zur Datei */
-  file: string;
-}
-
-/**
- * Fehlerdetails eines einzelnen Fehlers.
- */
-export interface FailureError {
-  /** Fehlermeldung */
-  message: string;
-  /** Stack Trace */
-  stack?: string;
-  /** Code-Snippet um den Fehler */
-  snippet?: string;
-  /** Position des Fehlers im Quellcode */
-  location?: FileLocation;
-}
-
-/**
- * Status eines Test-Schritts.
- */
-export type FailureStepStatus = "passed" | "failed";
-
-/**
- * Ein einzelner Test-Schritt mit Status.
- */
-export interface FailureStep {
-  /** Name/Titel des Schritts */
-  name: string;
-  /** Status des Schritts */
-  status: FailureStepStatus;
-  /** Dauer in Millisekunden */
-  duration: number;
-  /** Kategorie (z.B. 'test.step', 'hook', 'fixture') */
-  category: string;
-  /** Fehlermeldung wenn vorhanden */
-  error?: string;
-}
-
-/**
- * Medien-URLs für einen Failure.
- * Pfade im Cloud Storage Format: gs://bucket/tenantId/testId/filename
- */
-export interface FailureMedia {
-  /** Pfade zu Screenshots */
-  screenshots: string[];
-  /** Pfade zu Trace-Dateien */
-  traces: string[];
-  /** Pfade zu Video-Dateien */
-  videos: string[];
-}
-
-/**
- * Error-Context (Page Snapshot zum Fehlerzeitpunkt).
- */
-export interface ErrorContext {
-  /** Inhalt des Error-Context (z.B. Accessibility-Tree im YAML-Format) */
-  content: string;
-}
-
-// ============================================================================
-// INTERFACES - Failure
-// ============================================================================
-
-/**
- * Failure - Collection: `failures`
+ * TestRun - Collection: `testRuns`
  *
- * Repräsentiert einen fehlgeschlagenen Test mit allen Details.
- * Enthält Referenzen zu Tenant sowie verknüpfte Medien.
- * Die reportId dient zur Gruppierung aller Failures eines Test-Runs.
+ * Repräsentiert einen vollständigen Test-Report.
+ * Speichert ALLE Tests (passed, failed, skipped) basierend auf CTRF.
  */
-export interface Failure {
-  /** Eindeutige ID (Auto-generated) */
+export interface TestRun extends StabilifyTestReport {
+  /** Eindeutige ID (UUID aus reportId) */
   id: string;
-  /** Referenz zum Tenant (aus API Key ermittelt) */
+  /** Referenz zum Tenant */
   tenantId: string;
-  /** Report ID zur Gruppierung aller Failures eines Test-Runs (UUID) */
-  reportId: string;
 
-  // Test-Identifikation
-  /** Eindeutige Test-ID */
-  testId: string;
-  /** Vollständiger Titel-Pfad des Tests */
-  title: string;
-  /** Pfad zur Testdatei */
-  file: string;
-  /** Position im Quellcode */
-  location: SourceLocation;
-  /** Projektname */
-  projectName: string;
-  /** Suite-Pfad (hierarchischer Pfad) */
-  suite: string;
-  /** Browser-Information (Name + Version) */
-  browser?: string;
-
-  // Fehlerdetails
-  /** Gesammelte Fehlerinformationen */
-  errors: FailureError[];
-  /** Ausgeführte Test-Schritte mit Status */
-  steps: FailureStep[];
-
-  // Storage URLs
-  /** Medien-URLs (Screenshots, Traces, Videos) */
-  media: FailureMedia;
-
-  // Kontext
-  /** Error-Context von Playwright (Page Snapshot zum Fehlerzeitpunkt) */
-  errorContext?: ErrorContext;
-  /** Standardausgabe des Tests */
-  stdout: string[];
-  /** Fehlerausgabe des Tests */
-  stderr: string[];
-
-  // Metadaten
-  /** Status des Failures */
-  status: FailureStatus;
-  /** Testdauer in Millisekunden */
-  duration: number;
-  /** Retry-Nummer des aktuellen Versuchs */
-  retry: number;
-  /** Ist der Test flaky? (passed nach vorherigen Fehlern) */
-  flaky: boolean;
-  /** Umgebungsinformationen */
-  environment: ReportEnvironment;
-
-  // Lifecycle
-  /** Erstellungszeitpunkt */
+  // Metadaten für Firestore-Queries (dupliziert aus results für Indexing)
+  /** Anzahl fehlgeschlagener Tests */
+  failedCount: number;
+  /** Anzahl bestandener Tests */
+  passedCount: number;
+  /** Gesamtdauer in ms */
+  durationMs: number;
+  /** Zeitstempel als Firestore Timestamp */
   createdAt: Timestamp;
+
+  // AI Analyse
   /** Status der AI-Analyse */
-  analysisStatus: FailureAnalysisStatus;
-  /** Referenz zur Solution (wenn Analyse abgeschlossen) */
-  solutionId?: string;
+  analysisStatus: AnalysisStatus;
 }
 
 // ============================================================================
@@ -405,16 +255,19 @@ export interface TokenUsage {
 /**
  * Solution - Collection: `solutions`
  *
- * Repräsentiert eine AI-generierte Lösung für einen Failure.
- * Enthält Analyse-Ergebnis, Lösungsstrategie und AI-Metadaten.
+ * Repräsentiert eine AI-generierte Lösung für einen Failure innerhalb eines TestRuns.
  */
 export interface Solution {
   /** Eindeutige ID (Auto-generated) */
   id: string;
   /** Referenz zum Tenant */
   tenantId: string;
-  /** Referenz zum Failure */
-  failureId: string;
+  /** Referenz zum TestRun */
+  testRunId: string;
+  /** Index des Tests im `results.tests` Array des TestRuns */
+  testIndex: number;
+  /** Test ID (aus StabilifyTestExtra) zur doppelten Sicherheit */
+  testId: string;
 
   // Analyse-Ergebnis
   /** Identifizierte Ursache des Fehlers */

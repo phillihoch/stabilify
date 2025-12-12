@@ -4,15 +4,30 @@
  * @packageDocumentation
  */
 
-// Self-Healing Reporter Export
+// Reporter Export
 export {
-  SelfHealingReporter as Reporter,
-  default as SelfHealingReporter,
-  type CollectedFailure,
-  type ReportEnvironment,
-  type SelfHealingReporterOptions,
+  StabilifyReporter as Reporter,
+  // Deprecated Alias
+  StabilifyReporter as SelfHealingReporter,
+  default as StabilifyReporter,
+  type StabilifyReporterOptions,
   type UploadOptions,
-} from "./self-healing-reporter";
+} from "./reporter/stabilify-reporter";
+
+// Report Types
+export type {
+  StabilifyEnvironment,
+  StabilifyTest,
+  StabilifyTestReport,
+  StabilifyTestSummary,
+} from "./types/stabilify-report";
+
+export type {
+  CtrfEnvironment,
+  CtrfReport,
+  CtrfSummary,
+  CtrfTest,
+} from "./types/ctrf";
 
 // Uploader Export
 export {
@@ -24,31 +39,20 @@ export {
 
 // Firestore Types Export
 export {
-  type AiModel,
-  // ApiKey
+  type AnalysisStatus,
+  // Interfaces
   type ApiKey,
   // Enums / Type Aliases
   type ApiKeyScope,
-  type CiProvider,
-  type ErrorContext,
-  type Failure,
-  type FailureAnalysisStatus,
-  type FailureError,
-  type FailureMedia,
-  type FailureStatus,
-  type FailureStep,
-  type FailureStepStatus,
-  type FileLocation,
   type Solution,
   type SolutionCategory,
-  // Solution
   type SolutionStrategy,
   type SolutionStrategyType,
-  // Failure
-  type SourceLocation,
   type Tenant,
-  type TenantPlan,
-  // Tenant
   type TenantSettings,
+  type TestRun,
   type TokenUsage,
 } from "./types/firestore";
+
+// Shared Types
+export { type AiModel, type CiProvider, type TenantPlan } from "./types/shared";

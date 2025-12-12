@@ -7,7 +7,7 @@
  * @module utils/ci-metadata
  */
 
-import type { CiProvider } from "../types/firestore";
+import type { CiProvider } from "../types/shared";
 
 /**
  * CI/CD Metadaten für einen Test-Run
