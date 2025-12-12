@@ -241,12 +241,26 @@ describe("StabilifyUploader.getUploadUrls()", () => {
           fileName: "screenshot.png",
           uploadUrl: "https://storage.googleapis.com/signed-url-1",
           destination: "gs://bucket/tenant-123/test-1/screenshot.png",
+          requiredHeaders: {
+            "Content-Type": "image/png",
+            "x-goog-meta-tenant-id": "tenant-123",
+            "x-goog-meta-test-id": "test-1",
+            "x-goog-meta-file-type": "screenshot",
+            "x-goog-meta-uploaded-at": "2024-01-01T00:00:00.000Z",
+          },
         },
         {
           testId: "test-1",
           fileName: "trace.zip",
           uploadUrl: "https://storage.googleapis.com/signed-url-2",
           destination: "gs://bucket/tenant-123/test-1/trace.zip",
+          requiredHeaders: {
+            "Content-Type": "application/zip",
+            "x-goog-meta-tenant-id": "tenant-123",
+            "x-goog-meta-test-id": "test-1",
+            "x-goog-meta-file-type": "trace",
+            "x-goog-meta-uploaded-at": "2024-01-01T00:00:00.000Z",
+          },
         },
       ],
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
@@ -260,29 +274,32 @@ describe("StabilifyUploader.getUploadUrls()", () => {
     const result = await uploader.getUploadUrls(files);
 
     expect(result).toEqual(mockResponse);
-    expect(globalThis.fetch).toHaveBeenCalledWith(`${mockEndpoint}/getUploadUrls`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": mockApiKey,
-      },
-      body: JSON.stringify({
-        files: [
-          {
-            testId: "test-1",
-            fileName: "screenshot.png",
-            contentType: "image/png",
-            fileType: "screenshot",
-          },
-          {
-            testId: "test-1",
-            fileName: "trace.zip",
-            contentType: "application/zip",
-            fileType: "trace",
-          },
-        ],
-      }),
-    });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      `${mockEndpoint}/getUploadUrls`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": mockApiKey,
+        },
+        body: JSON.stringify({
+          files: [
+            {
+              testId: "test-1",
+              fileName: "screenshot.png",
+              contentType: "image/png",
+              fileType: "screenshot",
+            },
+            {
+              testId: "test-1",
+              fileName: "trace.zip",
+              contentType: "application/zip",
+              fileType: "trace",
+            },
+          ],
+        }),
+      }
+    );
   });
 
   it("sollte einen Fehler werfen bei HTTP-Fehler", async () => {
@@ -375,6 +392,13 @@ describe("StabilifyUploader.uploadFiles()", () => {
         fileName: "test-screenshot.png",
         uploadUrl: "https://storage.googleapis.com/signed-url",
         destination: "gs://bucket/tenant/test-1/test-screenshot.png",
+        requiredHeaders: {
+          "Content-Type": "image/png",
+          "x-goog-meta-tenant-id": "tenant-123",
+          "x-goog-meta-test-id": "test-1",
+          "x-goog-meta-file-type": "screenshot",
+          "x-goog-meta-uploaded-at": "2024-01-01T00:00:00.000Z",
+        },
       },
     ];
 
@@ -391,6 +415,10 @@ describe("StabilifyUploader.uploadFiles()", () => {
         method: "PUT",
         headers: {
           "Content-Type": "image/png",
+          "x-goog-meta-tenant-id": "tenant-123",
+          "x-goog-meta-test-id": "test-1",
+          "x-goog-meta-file-type": "screenshot",
+          "x-goog-meta-uploaded-at": "2024-01-01T00:00:00.000Z",
         },
         body: expect.any(Buffer),
       }
@@ -414,6 +442,13 @@ describe("StabilifyUploader.uploadFiles()", () => {
         fileName: "file.png",
         uploadUrl: "https://storage.googleapis.com/signed-url",
         destination: "gs://bucket/tenant/test-1/file.png",
+        requiredHeaders: {
+          "Content-Type": "image/png",
+          "x-goog-meta-tenant-id": "tenant-123",
+          "x-goog-meta-test-id": "test-1",
+          "x-goog-meta-file-type": "screenshot",
+          "x-goog-meta-uploaded-at": "2024-01-01T00:00:00.000Z",
+        },
       },
     ];
 
@@ -440,6 +475,13 @@ describe("StabilifyUploader.uploadFiles()", () => {
         fileName: "test-screenshot.png",
         uploadUrl: "https://storage.googleapis.com/signed-url",
         destination: "gs://bucket/tenant/test-1/test-screenshot.png",
+        requiredHeaders: {
+          "Content-Type": "image/png",
+          "x-goog-meta-tenant-id": "tenant-123",
+          "x-goog-meta-test-id": "test-1",
+          "x-goog-meta-file-type": "screenshot",
+          "x-goog-meta-uploaded-at": "2024-01-01T00:00:00.000Z",
+        },
       },
     ];
 

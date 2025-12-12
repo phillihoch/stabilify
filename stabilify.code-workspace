@@ -1,14 +1,17 @@
 {
-	"folders": [
-		{
-			"name": "stabilify",
-			"path": "."
-		},
-		{
-			"name": "stabilify-server",
-			"path": "../stabilify-server"
-		}
-	],
-	"settings": {}
+  "folders": [
+    {
+      "name": "stabilify",
+      "path": "."
+    },
+    {
+      "name": "stabilify-server",
+      "path": "../stabilify-server"
+    },
+    {
+      "name": "playwright-ctrf-json-reporter",
+      "path": "../playwright-ctrf-json-reporter"
+    }
+  ],
+  "settings": {}
 }
-

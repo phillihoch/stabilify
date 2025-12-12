@@ -61,6 +61,12 @@ export interface UploadUrlInfo {
   uploadUrl: string;
   /** Ziel-Pfad im Storage (gs://bucket/path) */
   destination: string;
+  /**
+   * Erforderliche HTTP-Header für den Upload.
+   * Diese Header müssen beim PUT-Request mitgesendet werden,
+   * da sie Teil der Signatur sind.
+   */
+  requiredHeaders: Record<string, string>;
 }
 
 /**
@@ -323,12 +329,11 @@ export class StabilifyUploader {
         // Datei lesen
         const fileBuffer = fs.readFileSync(file.localPath);
 
-        // PUT-Request mit signierter URL
+        // PUT-Request mit signierter URL und allen erforderlichen Headern
+        // Die requiredHeaders enthalten Content-Type und alle x-goog-meta-* Header
         const response = await fetch(urlInfo.uploadUrl, {
           method: "PUT",
-          headers: {
-            "Content-Type": file.contentType,
-          },
+          headers: urlInfo.requiredHeaders,
           body: fileBuffer,
         });
 
