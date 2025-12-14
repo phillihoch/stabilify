@@ -8,6 +8,7 @@
  */
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 import type { StabilifyTestReport } from "../types/stabilify-report";
 import { FileCollector } from "./file-collector";
 import { RetryHandler } from "./retry-handler";
@@ -20,6 +21,8 @@ export type { FileToUpload, FileType } from "./types";
  * Request-Body für getUploadUrls Endpoint.
  */
 export interface GetUploadUrlsRequest {
+  /** Report-ID zur Organisation der Dateien im Storage */
+  reportId: string;
   files: Array<{
     testId: string;
     fileName: string;
@@ -113,28 +116,35 @@ export class StabilifyUploader {
 
     // Phase 2 & 3: Nur wenn Dateien vorhanden sind
     if (files.length > 0) {
-      await this.handleFileUploads(files);
+      await this.handleFileUploads(files, report);
     } else {
       console.log("[stabilify] No files to upload, skipping upload phase");
     }
 
-    // Phase 4: Report an Server senden
+    // Phase 4: Report an Server senden (mit aktualisierten Storage-Pfaden)
     return await this.submitTestRun(report);
   }
 
   /**
    * Handhabt den Upload der Dateien (URLs holen + Upload).
    */
-  private async handleFileUploads(files: FileToUpload[]): Promise<void> {
+  private async handleFileUploads(
+    files: FileToUpload[],
+    report: StabilifyTestReport
+  ): Promise<void> {
     // Signierte URLs holen
     const { uploadUrls, tenantId, expiresAt } = await this.retryHandler.execute(
-      () => this.getUploadUrls(files),
+      () => this.getUploadUrls(files, report.reportId),
       "Get Upload URLs"
     );
 
     console.log(
       `[stabilify] Received upload URLs for tenant: ${tenantId} (expires: ${expiresAt})`
     );
+
+    // Report-Pfade aktualisieren (lokale Pfade -> Storage-Pfade)
+    this.updateReportPaths(report, uploadUrls);
+    console.log("[stabilify] Updated report paths to storage paths");
 
     // Dateien hochladen
     const uploadedCount = await this.uploadFiles(files, uploadUrls);
@@ -145,9 +155,11 @@ export class StabilifyUploader {
    * Fordert signierte Upload-URLs vom Server an.
    */
   private async getUploadUrls(
-    files: FileToUpload[]
+    files: FileToUpload[],
+    reportId: string
   ): Promise<GetUploadUrlsResponse> {
     const requestBody: GetUploadUrlsRequest = {
+      reportId,
       files: files.map((file) => ({
         testId: file.testId,
         fileName: file.fileName,
@@ -228,6 +240,51 @@ export class StabilifyUploader {
 
     const results = await Promise.all(uploadPromises);
     return results.filter(Boolean).length;
+  }
+
+  /**
+   * Aktualisiert die Pfade im Report von lokalen Pfaden zu Storage-Pfaden.
+   * Dies muss nach dem Erhalt der Upload-URLs und vor dem Hochladen der Dateien erfolgen.
+   */
+  private updateReportPaths(
+    report: StabilifyTestReport,
+    uploadUrls: UploadUrlInfo[]
+  ): void {
+    // Map erstellen: testId:fileName -> destination (Storage-Pfad)
+    const pathMap = new Map<string, string>();
+    for (const urlInfo of uploadUrls) {
+      const key = `${urlInfo.testId}:${urlInfo.fileName}`;
+      pathMap.set(key, urlInfo.destination);
+    }
+
+    // Alle Tests durchgehen und Pfade aktualisieren
+    for (const test of report.results.tests) {
+      const testId = test.extra.testId;
+
+      // Attachments aktualisieren (Screenshots, Traces, Videos)
+      if (test.attachments) {
+        for (const attachment of test.attachments) {
+          if (attachment.path && attachment.path !== "[embedded]") {
+            const fileName = path.basename(attachment.path);
+            const key = `${testId}:${fileName}`;
+            const storagePath = pathMap.get(key);
+            if (storagePath) {
+              attachment.path = storagePath;
+            }
+          }
+        }
+      }
+
+      // Error Context aktualisieren
+      if (test.extra.errorContext?.storagePath) {
+        const fileName = path.basename(test.extra.errorContext.storagePath);
+        const key = `${testId}:${fileName}`;
+        const storagePath = pathMap.get(key);
+        if (storagePath) {
+          test.extra.errorContext.storagePath = storagePath;
+        }
+      }
+    }
   }
 
   /**

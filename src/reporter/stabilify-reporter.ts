@@ -98,8 +98,10 @@ export class StabilifyReporter implements Reporter {
     );
 
     // Environment sammeln
+    // WICHTIG: Nur environment-spezifische Optionen übergeben, NICHT die kompletten options
+    // (die auch upload.apiKey enthalten würden)
     const environment = this.environmentCollector.collect(
-      this.options.environment || this.options
+      this.options.environment
     );
 
     // CI Metadata sammeln

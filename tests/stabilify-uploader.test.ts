@@ -215,6 +215,7 @@ describe("StabilifyUploader.getUploadUrls()", () => {
   });
 
   it("sollte signierte URLs vom Server anfordern und zurückgeben", async () => {
+    const reportId = "report-123";
     const files: FileToUpload[] = [
       {
         testId: "test-1",
@@ -240,10 +241,12 @@ describe("StabilifyUploader.getUploadUrls()", () => {
           testId: "test-1",
           fileName: "screenshot.png",
           uploadUrl: "https://storage.googleapis.com/signed-url-1",
-          destination: "gs://bucket/tenant-123/test-1/screenshot.png",
+          destination:
+            "gs://bucket/tenant-123/report-123/test-1/screenshot.png",
           requiredHeaders: {
             "Content-Type": "image/png",
             "x-goog-meta-tenant-id": "tenant-123",
+            "x-goog-meta-report-id": "report-123",
             "x-goog-meta-test-id": "test-1",
             "x-goog-meta-file-type": "screenshot",
             "x-goog-meta-uploaded-at": "2024-01-01T00:00:00.000Z",
@@ -253,10 +256,11 @@ describe("StabilifyUploader.getUploadUrls()", () => {
           testId: "test-1",
           fileName: "trace.zip",
           uploadUrl: "https://storage.googleapis.com/signed-url-2",
-          destination: "gs://bucket/tenant-123/test-1/trace.zip",
+          destination: "gs://bucket/tenant-123/report-123/test-1/trace.zip",
           requiredHeaders: {
             "Content-Type": "application/zip",
             "x-goog-meta-tenant-id": "tenant-123",
+            "x-goog-meta-report-id": "report-123",
             "x-goog-meta-test-id": "test-1",
             "x-goog-meta-file-type": "trace",
             "x-goog-meta-uploaded-at": "2024-01-01T00:00:00.000Z",
@@ -271,7 +275,8 @@ describe("StabilifyUploader.getUploadUrls()", () => {
       json: async () => mockResponse,
     });
 
-    const result = await uploader.getUploadUrls(files);
+    // @ts-expect-error - accessing private method for testing
+    const result = await uploader.getUploadUrls(files, reportId);
 
     expect(result).toEqual(mockResponse);
     expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -283,6 +288,7 @@ describe("StabilifyUploader.getUploadUrls()", () => {
           "x-api-key": mockApiKey,
         },
         body: JSON.stringify({
+          reportId,
           files: [
             {
               testId: "test-1",
@@ -303,6 +309,7 @@ describe("StabilifyUploader.getUploadUrls()", () => {
   });
 
   it("sollte einen Fehler werfen bei HTTP-Fehler", async () => {
+    const reportId = "report-456";
     const files: FileToUpload[] = [
       {
         testId: "test-1",
@@ -319,12 +326,14 @@ describe("StabilifyUploader.getUploadUrls()", () => {
       text: async () => "Unauthorized",
     });
 
-    await expect(uploader.getUploadUrls(files)).rejects.toThrow(
+    // @ts-expect-error - accessing private method for testing
+    await expect(uploader.getUploadUrls(files, reportId)).rejects.toThrow(
       "Failed to get upload URLs (401): Unauthorized"
     );
   });
 
   it("sollte einen Fehler werfen bei ungültiger Response", async () => {
+    const reportId = "report-789";
     const files: FileToUpload[] = [
       {
         testId: "test-1",
@@ -340,7 +349,8 @@ describe("StabilifyUploader.getUploadUrls()", () => {
       json: async () => ({ success: false }), // Ungültige Response
     });
 
-    await expect(uploader.getUploadUrls(files)).rejects.toThrow(
+    // @ts-expect-error - accessing private method for testing
+    await expect(uploader.getUploadUrls(files, reportId)).rejects.toThrow(
       "Invalid response from getUploadUrls endpoint"
     );
   });
