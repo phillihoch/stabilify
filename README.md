@@ -1,6 +1,18 @@
 # Stabilify
 
+[![npm version](https://img.shields.io/npm/v/stabilify.svg)](https://www.npmjs.com/package/stabilify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Ein Self-Healing Reporter für Playwright, der fehlgeschlagene Tests analysiert und alle relevanten Informationen für die Weiterverarbeitung sammelt.
+
+## Features
+
+- 📊 **Detaillierte Failure-Reports** - Sammelt alle relevanten Informationen zu fehlgeschlagenen Tests
+- 🔄 **Retry-Tracking** - Verfolgt alle Wiederholungsversuche mit Details
+- 📸 **Artefakte** - Screenshots, Traces und Videos werden automatisch erfasst
+- 🚀 **Cloud-Upload** - Optionaler Upload zum Stabilify-Server für zentrale Analyse
+- 🔧 **CI/CD-Integration** - Automatische Erkennung von 8+ CI-Providern
+- 📝 **CTRF-kompatibel** - Output-Format basiert auf dem Common Test Report Format
 
 ## Installation
 
@@ -100,7 +112,6 @@ export default defineConfig({
         upload: {
           enabled: true,
           apiKey: process.env.STABILIFY_API_KEY, // Empfohlen: API-Key aus Umgebungsvariable
-          endpoint: "https://api.stabilify.dev", // Optional: Standard-Endpoint
           retryAttempts: 3, // Optional: Anzahl der Wiederholungsversuche bei Fehlern
           retryDelayMs: 1000, // Optional: Verzögerung zwischen Wiederholungsversuchen
         },
@@ -112,13 +123,12 @@ export default defineConfig({
 
 Upload-Felder:
 
-| Feld            | Typ       | Beschreibung                                                 | Default                         |
-| --------------- | --------- | ------------------------------------------------------------ | ------------------------------- |
-| `enabled`       | `boolean` | Upload aktivieren/deaktivieren                               | `false`                         |
-| `apiKey`        | `string`  | API-Key für Authentifizierung (erforderlich wenn enabled)    | `process.env.STABILIFY_API_KEY` |
-| `endpoint`      | `string`  | Server-Endpoint URL                                          | `https://api.stabilify.dev`     |
-| `retryAttempts` | `number`  | Anzahl der Wiederholungsversuche bei Upload-Fehlern          | `3`                             |
-| `retryDelayMs`  | `number`  | Verzögerung zwischen Wiederholungsversuchen in Millisekunden | `1000`                          |
+| Feld            | Typ       | Beschreibung                                                 | Default |
+| --------------- | --------- | ------------------------------------------------------------ | ------- |
+| `enabled`       | `boolean` | Upload aktivieren/deaktivieren                               | `false` |
+| `apiKey`        | `string`  | API-Key für Authentifizierung (erforderlich wenn enabled)    | -       |
+| `retryAttempts` | `number`  | Anzahl der Wiederholungsversuche bei Upload-Fehlern          | `3`     |
+| `retryDelayMs`  | `number`  | Verzögerung zwischen Wiederholungsversuchen in Millisekunden | `1000`  |
 
 **Hinweis:** Der API-Key sollte aus Sicherheitsgründen immer über eine Umgebungsvariable (`STABILIFY_API_KEY`) bereitgestellt werden.
 
@@ -291,6 +301,23 @@ Der Reporter erstellt eine JSON-Datei mit folgendem Format:
 | `ciMetadata` | `object` | CI/CD Metadaten (Provider, Branch, Commit, Job-ID, Build-URL) |
 | `stats`      | `object` | Test-Statistiken (total, passed, failed, skipped)             |
 
+## TypeScript-Typen
+
+Stabilify exportiert alle wichtigen Typen für TypeScript-Projekte:
+
+```typescript
+import type {
+  StabilifyReporterOptions,
+  UploadOptions,
+  StabilifyTest,
+  StabilifyTestReport,
+  StabilifyEnvironment,
+} from "stabilify";
+
+// Standalone Uploader für eigene Integrationen
+import { StabilifyUploader, type UploaderOptions } from "stabilify";
+```
+
 ## Entwicklung
 
 ```bash
@@ -302,6 +329,9 @@ npm test
 
 # Build erstellen
 npm run build
+
+# Type-Check
+npm run typecheck
 
 # Für lokale Entwicklung in anderem Projekt
 npm link

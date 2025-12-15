@@ -5,6 +5,18 @@
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "author": "Philipp Hoch",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phillihoch/stabilify.git"
+  },
+  "bugs": {
+    "url": "https://github.com/phillihoch/stabilify/issues"
+  },
+  "homepage": "https://github.com/phillihoch/stabilify#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -22,6 +34,7 @@
   ],
   "scripts": {
     "build": "rollup -c",
+    "prepublishOnly": "npm run build",
     "dev": "rollup -c -w",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
@@ -33,15 +46,12 @@
     "auto-healing",
     "ai"
   ],
-  "author": "",
   "license": "MIT",
   "peerDependencies": {
     "@playwright/test": "^1.40.0"
   },
   "dependencies": {
-    "dotenv": "^17.2.3",
-    "firebase": "^12.6.0",
-    "openai": "^6.9.1"
+    "firebase": "^12.6.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
