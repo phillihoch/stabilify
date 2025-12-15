@@ -13,16 +13,24 @@ export class FileCollector {
   /**
    * Sammelt alle hochzuladenden Dateien aus dem Report.
    *
+   * Sammelt nur Dateien von fehlgeschlagenen Tests, unabhängig von der Playwright trace-Konfiguration.
+   * Dies spart Firebase Storage-Kosten, da nur relevante Dateien hochgeladen werden.
+   *
    * Durchläuft alle Tests und extrahiert Screenshots, Traces, Videos und Error-Context-Dateien.
    * Prüft mit fs.existsSync(), ob die Datei tatsächlich existiert.
    *
    * @param report - Der vollständige Test-Report
-   * @returns Array von FileToUpload-Objekten
+   * @returns Array von FileToUpload-Objekten (nur von fehlgeschlagenen Tests)
    */
   collect(report: StabilifyTestReport): FileToUpload[] {
     const files: FileToUpload[] = [];
 
     for (const test of report.results.tests) {
+      // Nur Dateien von fehlgeschlagenen Tests hochladen
+      if (test.status !== "failed") {
+        continue;
+      }
+
       const testId = test.extra.testId;
 
       // Attachments verarbeiten
