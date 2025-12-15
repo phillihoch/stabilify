@@ -37,22 +37,5 @@ export {
   type UploaderOptions,
 } from "./uploader/stabilify-uploader";
 
-// Firestore Types Export
-export {
-  type AnalysisStatus,
-  // Interfaces
-  type ApiKey,
-  // Enums / Type Aliases
-  type ApiKeyScope,
-  type Solution,
-  type SolutionCategory,
-  type SolutionStrategy,
-  type SolutionStrategyType,
-  type Tenant,
-  type TenantSettings,
-  type TestRun,
-  type TokenUsage,
-} from "./types/firestore";
-
-// Shared Types
+// Shared Types (used by reporter)
 export { type AiModel, type CiProvider, type TenantPlan } from "./types/shared";
