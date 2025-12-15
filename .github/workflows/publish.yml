@@ -23,9 +23,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Clean install dependencies
-        run: |
-          npm config delete always-auth || true
-          npm ci
+        run: npm ci
       # - run: npm test
       # Einfach nur npm publish - Provenance wird automatisch generiert!
       - run: npm publish
