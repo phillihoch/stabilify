@@ -140,6 +140,10 @@ export class StabilifyReporter implements Reporter {
     // Upload (wenn aktiviert)
     if (this.options.upload?.enabled) {
       await this.uploadReport(report);
+    } else {
+      console.log(
+        "[stabilify] ℹ️  Upload deaktiviert. Setze 'upload.enabled: true' in der Reporter-Konfiguration um Ergebnisse hochzuladen."
+      );
     }
   }
 
@@ -155,12 +159,25 @@ export class StabilifyReporter implements Reporter {
       console.error(
         "[stabilify] ❌ Upload-Konfiguration ungültig: apiKey ist erforderlich wenn enabled=true"
       );
+      console.error(
+        "[stabilify] ℹ️  Setze 'upload.apiKey' in der Reporter-Konfiguration oder als Umgebungsvariable STABILIFY_API_KEY"
+      );
       upload.enabled = false;
+    } else if (upload.enabled && upload.apiKey) {
+      console.log("[stabilify] ✓ Upload-Konfiguration validiert");
     }
   }
 
   private async uploadReport(report: StabilifyTestReport): Promise<void> {
-    if (!this.options.upload?.apiKey) return;
+    if (!this.options.upload?.apiKey) {
+      console.warn(
+        "[stabilify] ⚠️  Upload übersprungen: Kein API Key vorhanden"
+      );
+      console.log(
+        "[stabilify] ℹ️  Setze 'upload.apiKey' in der Reporter-Konfiguration oder als Umgebungsvariable STABILIFY_API_KEY"
+      );
+      return;
+    }
 
     try {
       console.log("[stabilify] Starte Upload-Flow...");
@@ -169,8 +186,12 @@ export class StabilifyReporter implements Reporter {
       });
 
       await uploader.uploadTestRun(report);
+      console.log("[stabilify] ✓ Upload erfolgreich abgeschlossen");
     } catch (error) {
       console.error("[stabilify] ❌ Upload fehlgeschlagen:", error);
+      if (error instanceof Error) {
+        console.error("[stabilify] Fehlerdetails:", error.message);
+      }
     }
   }
 }

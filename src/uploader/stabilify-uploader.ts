@@ -112,16 +112,31 @@ export class StabilifyUploader {
 
     // Phase 1: Dateien sammeln
     const files = this.fileCollector.collect(report);
-    console.log(`[stabilify] Collected ${files.length} file(s) to upload`);
+    const failedTests = report.results.tests.filter(
+      (t) => t.status === "failed"
+    );
+
+    if (files.length > 0) {
+      console.log(
+        `[stabilify] Collected ${files.length} file(s) from ${failedTests.length} failed test(s) to upload`
+      );
+    } else if (failedTests.length > 0) {
+      console.log(
+        `[stabilify] ℹ️  ${failedTests.length} test(s) failed, but no files (traces/screenshots/videos) found to upload`
+      );
+    } else {
+      console.log(
+        "[stabilify] ✓ All tests passed - no files to upload (only JSON report will be sent)"
+      );
+    }
 
     // Phase 2 & 3: Nur wenn Dateien vorhanden sind
     if (files.length > 0) {
       await this.handleFileUploads(files, report);
-    } else {
-      console.log("[stabilify] No files to upload, skipping upload phase");
     }
 
     // Phase 4: Report an Server senden (mit aktualisierten Storage-Pfaden)
+    console.log("[stabilify] Uploading test report (JSON)...");
     return await this.submitTestRun(report);
   }
 
@@ -168,6 +183,10 @@ export class StabilifyUploader {
       })),
     };
 
+    console.log(
+      `[stabilify] Requesting upload URLs for ${files.length} file(s)...`
+    );
+
     const response = await fetch(this.getUploadUrlsEndpoint, {
       method: "POST",
       headers: {
@@ -179,6 +198,14 @@ export class StabilifyUploader {
 
     if (!response.ok) {
       const errorText = await response.text();
+
+      // Spezifische Fehlermeldungen für häufige Probleme
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(
+          `Authentication failed (${response.status}): Ungültiger API Key. Bitte überprüfe deinen API Key.`
+        );
+      }
+
       throw new Error(
         `Failed to get upload URLs (${response.status}): ${errorText}`
       );
@@ -305,6 +332,14 @@ export class StabilifyUploader {
 
       if (!response.ok) {
         const errorText = await response.text();
+
+        // Spezifische Fehlermeldungen für häufige Probleme
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            `Authentication failed (${response.status}): Ungültiger API Key. Bitte überprüfe deinen API Key.`
+          );
+        }
+
         throw new Error(
           `Failed to submit test run (${response.status}): ${errorText}`
         );
